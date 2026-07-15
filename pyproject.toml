@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arc-agent-pay"
+version = "0.1.0"
+description = "Python SDK for AI agent payments on Arc using USDC nanopayments (x402 / EIP-3009)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["x402", "usdc", "arc", "ai-agents", "payments", "eip-3009", "erc-8004"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "x402[evm,httpx]>=2.6",
+    "eth-account>=0.13",
+]
+
+# User-facing extras for `pip install "arc-agent-pay[<extra>]"`.
+# The core install above stays minimal; heavy deps live here and are
+# lazy-imported by the modules that need them.
+[project.optional-dependencies]
+llm = ["openai>=1.30"]
+rag = ["chromadb>=0.5", "fastembed>=0.3"]
+onchain = ["web3>=7.0"]
+observability = ["langfuse>=3.0"]
+mcp = ["mcp>=1.0"]
+agent = [
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "openai>=1.30",
+]
+# Everything: every feature extra in one install.
+all = [
+    "openai>=1.30",
+    "chromadb>=0.5",
+    "fastembed>=0.3",
+    "web3>=7.0",
+    "langfuse>=3.0",
+    "mcp>=1.0",
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+arc-agent-pay-mcp = "arc_agent_pay.mcp_server.server:main"
+
+[project.urls]
+Homepage   = "https://agentpay.bond"
+Repository = "https://github.com/hamedkharazmi/arc-agent-pay"
+Documentation = "https://agentpay.bond/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["arc_agent_pay"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

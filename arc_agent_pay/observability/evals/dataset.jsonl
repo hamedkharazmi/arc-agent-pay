@@ -1,0 +1,16 @@
+{"topic": "bitcoin and ethereum prices today", "expected_services": ["Crypto Price Feed"]}
+{"topic": "real-time crypto market data", "expected_services": ["Crypto Price Feed"]}
+{"topic": "USDC price and 24h change", "expected_services": ["Crypto Price Feed"]}
+{"topic": "latest technology news headlines", "expected_services": ["News Headlines"]}
+{"topic": "top finance news today", "expected_services": ["News Headlines"]}
+{"topic": "world news media coverage", "expected_services": ["News Headlines"]}
+{"topic": "large whale wallet movements on-chain", "expected_services": ["Token Whale Tracker"]}
+{"topic": "track big USDC transfers", "expected_services": ["Token Whale Tracker"]}
+{"topic": "defi whale analytics", "expected_services": ["Token Whale Tracker"]}
+{"topic": "summarize a research topic from the web", "expected_services": ["Web Research API"]}
+{"topic": "AI web research brief", "expected_services": ["Web Research API"]}
+{"topic": "crypto whale activity and prices", "expected_services": ["Token Whale Tracker", "Crypto Price Feed"]}
+{"topic": "market data and finance headlines", "expected_services": ["Crypto Price Feed", "News Headlines"]}
+{"topic": "research the AI agent economy with news", "expected_services": ["Web Research API", "News Headlines"]}
+{"topic": "on-chain analytics for token transfers", "expected_services": ["Token Whale Tracker"]}
+{"topic": "summarize defi trends and crypto prices", "expected_services": ["Web Research API", "Crypto Price Feed"]}

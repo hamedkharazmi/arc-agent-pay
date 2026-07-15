@@ -1,0 +1,11 @@
+{
+  "_source": "https://docs.arc.io/arc/tutorials/register-your-first-ai-agent",
+  "_note": "ERC-8004 registries deployed on Arc Testnet (chain id 5042002). Override per-deployment via the ERC8004_* env vars if these change.",
+  "arc_testnet": {
+    "chain_id": 5042002,
+    "rpc_url": "https://rpc.testnet.arc.network",
+    "identity_registry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputation_registry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "validation_registry": "0x8004Cb1BF31DAf7788923b405b754f57acEB4272"
+  }
+}

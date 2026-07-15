@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: Python — lint + test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (core + dev + extras)
+        run: uv sync --group dev --extra agent --extra rag --extra onchain --extra mcp --extra observability
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Pytest
+        run: uv run pytest -q
+
+  security:
+    name: Security — audit + secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for secret scanning
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Dependency vulnerability audit (pip-audit)
+        # Audits the resolved dependency set. CVE-2026-45829 (chromadb) is
+        # ignored: no fixed release exists yet — re-check and drop the ignore
+        # once chromadb ships a patch.
+        run: |
+          uv export --group dev --extra all \
+            --no-emit-project --no-hashes > audit-reqs.txt
+          uvx pip-audit -r audit-reqs.txt --ignore-vuln CVE-2026-45829
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

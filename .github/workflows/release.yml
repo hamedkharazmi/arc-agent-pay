@@ -1,0 +1,52 @@
+name: Release to PyPI
+
+# Publishes on version tags (v0.1.0, v0.2.0, ...) via PyPI Trusted Publishing:
+# no API token is stored anywhere — PyPI trusts this repo+workflow through
+# GitHub's OIDC identity, and generates PEP 740 provenance attestations so
+# anyone can verify the wheel on PyPI was built from the tagged source here.
+#
+# One-time setup on pypi.org: project → Publishing → add GitHub publisher
+# (owner: hamedkharazmi, repo: arc-agent-pay, workflow: release.yml,
+#  environment: pypi).
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI (trusted publishing)
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC token for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # attestations: true is the default — PEP 740 provenance is
+        # generated and uploaded alongside the distributions.
