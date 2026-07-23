@@ -1,0 +1,29 @@
+name: Notify app repo
+
+# After CI succeeds on main, tell the (private) app repo to re-lock its SDK
+# pin — its bump-sdk.yml listens for this repository_dispatch, re-locks
+# uv.lock to the new main commit, re-runs the app tests, and pushes.
+#
+# One-time setup: add a fine-grained PAT as secret APP_REPO_DISPATCH_TOKEN
+# here, scoped to hamedkharazmi/arc-agent-pay-app with Contents: read/write
+# (repository_dispatch requires write).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  dispatch:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire sdk-updated dispatch
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_DISPATCH_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh api repos/hamedkharazmi/arc-agent-pay-app/dispatches \
+            -f event_type=sdk-updated \
+            -F 'client_payload[sha]='"$SHA"
