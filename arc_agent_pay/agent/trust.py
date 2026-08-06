@@ -16,6 +16,7 @@ import logging
 from typing import Any, NamedTuple, Optional
 
 from ..models import Service
+from ..spending import SpendCaps
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,9 @@ class ReputationGate:
     """Decide whether to pay a provider — the agent's spending policy.
 
     Applies, in order: a global kill switch, a provider denylist, an allowlist,
-    an on-chain-identity requirement, and an ERC-8004 reputation floor. All are
-    keyed on the provider's `provider_agent_id`.
+    cross-run spending caps, an on-chain-identity requirement, and an ERC-8004
+    reputation floor. Identity checks are keyed on the provider's
+    `provider_agent_id`; spending caps are keyed on the service URL host.
 
     Args:
         reputation: a ReputationClient (or anything with `summary(agent_id) ->
@@ -45,6 +47,9 @@ class ReputationGate:
         allowlist: if non-empty, only providers whose id is listed may be paid.
         denylist: providers whose id is listed are always refused.
         disabled: kill switch — refuse every payment.
+        caps: cross-run SpendCaps (daily / velocity / per-counterparty).
+            Requires `spend_ledger`; ignored without one.
+        spend_ledger: the SpendLedger the caps are checked against.
     """
 
     def __init__(
@@ -56,6 +61,8 @@ class ReputationGate:
         allowlist: Optional[set[int]] = None,
         denylist: Optional[set[int]] = None,
         disabled: bool = False,
+        caps: Optional[SpendCaps] = None,
+        spend_ledger: Any = None,
     ) -> None:
         self._rep = reputation
         self.min_reputation = float(min_reputation)
@@ -63,6 +70,11 @@ class ReputationGate:
         self.allowlist = {int(a) for a in allowlist} if allowlist else set()
         self.denylist = {int(d) for d in denylist} if denylist else set()
         self.disabled = bool(disabled)
+        self.caps = caps if (caps is not None and caps.active) else None
+        self.spend_ledger = spend_ledger
+        if self.caps is not None and self.spend_ledger is None:
+            logger.warning("spend caps configured without a ledger — caps will not be enforced")
+            self.caps = None
         self._cache: dict[int, float] = {}
 
     @property
@@ -74,6 +86,7 @@ class ReputationGate:
             or self.require_identity
             or bool(self.allowlist)
             or bool(self.denylist)
+            or self.caps is not None
         )
 
     def evaluate(self, service: Service) -> GateDecision:
@@ -94,6 +107,14 @@ class ReputationGate:
         # Allowlist: when set, only listed providers may be paid.
         if self.allowlist and provider_id not in self.allowlist:
             return GateDecision(False, None, "provider not in allowlist")
+
+        # Cross-run spending caps. Checked before the identity/reputation
+        # branches because those can early-allow providers without an on-chain
+        # identity — caps must bound every payment regardless.
+        if self.caps is not None:
+            reason = self.caps.check(self.spend_ledger, service.url)
+            if reason is not None:
+                return GateDecision(False, None, reason)
 
         # Identity requirement.
         if provider_id is None:

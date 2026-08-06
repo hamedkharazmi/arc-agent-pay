@@ -26,6 +26,7 @@ from .budget import BudgetGuard
 from .interceptor import PaymentClient
 from .models import Chain, Wallet, Service, Payment, Budget, PaymentRequest
 from .registry import Discovery, SemanticServiceRegistry, ServiceRegistry
+from .spending import InMemorySpendLedger, SpendCaps, SqliteSpendLedger
 from .exceptions import (
     ArcAgentPayError,
     InsufficientFundsError,
@@ -45,6 +46,10 @@ __all__ = [
     "SemanticServiceRegistry",
     "Discovery",
     "BudgetGuard",
+    # Spending caps
+    "SpendCaps",
+    "InMemorySpendLedger",
+    "SqliteSpendLedger",
     # Models
     "Chain",
     "Wallet",

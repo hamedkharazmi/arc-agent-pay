@@ -58,6 +58,10 @@ class ResearchAgent:
         provider_denylist: Optional[set[int]] = None,
         payments_disabled: bool = False,
         reputation: Any = None,
+        daily_cap_usdc: Optional[str] = None,
+        max_payments_per_hour: Optional[int] = None,
+        provider_daily_cap_usdc: Optional[str] = None,
+        spend_ledger: Any = None,
     ) -> None:
         self.budget_usdc = budget_usdc
         self.chain = chain
@@ -65,6 +69,13 @@ class ResearchAgent:
         self.use_graph = use_graph
         self.max_steps = max_steps
         self._payment_signer = payment_signer
+        self._spend_ledger = self._build_ledger(
+            spend_ledger,
+            caps_requested=any(
+                v is not None
+                for v in (daily_cap_usdc, max_payments_per_hour, provider_daily_cap_usdc)
+            ),
+        )
         self._gate = self._build_gate(
             min_reputation=min_provider_reputation,
             require_identity=require_provider_identity,
@@ -72,6 +83,9 @@ class ResearchAgent:
             denylist=provider_denylist,
             disabled=payments_disabled,
             reputation=reputation,
+            daily_cap_usdc=daily_cap_usdc,
+            max_payments_per_hour=max_payments_per_hour,
+            provider_daily_cap_usdc=provider_daily_cap_usdc,
         )
 
         self._private_key: Optional[str] = None
@@ -92,6 +106,22 @@ class ResearchAgent:
     # Trust policy
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_ledger(spend_ledger: Any, *, caps_requested: bool) -> Any:
+        """Resolve the spend ledger: caller's own, else a durable sqlite one
+        (only when caps are actually requested; never blocks the run)."""
+        if spend_ledger is not None:
+            return spend_ledger
+        if not caps_requested:
+            return None
+        from arc_agent_pay.spending import SqliteSpendLedger, default_ledger_path
+
+        try:
+            return SqliteSpendLedger(default_ledger_path())
+        except Exception as e:  # noqa: BLE001 - fail-open, caps just won't apply
+            logger.warning("could not open spend ledger (caps disabled): %s", e)
+            return None
+
     def _build_gate(
         self,
         *,
@@ -101,13 +131,18 @@ class ResearchAgent:
         denylist: Optional[set[int]],
         disabled: bool,
         reputation: Any,
+        daily_cap_usdc: Optional[str] = None,
+        max_payments_per_hour: Optional[int] = None,
+        provider_daily_cap_usdc: Optional[str] = None,
     ) -> Optional["ReputationGate"]:
         """Build the spending gate if any policy is set, else None (no-op)."""
+        from arc_agent_pay.spending import SpendCaps
+
         from .trust import ReputationGate
 
         rep = reputation
         # Only a reputation floor needs an on-chain client; skip the RPC setup
-        # for the purely local policies (allow/deny lists, kill switch).
+        # for the purely local policies (allow/deny lists, kill switch, caps).
         if rep is None and min_reputation > 0.0:
             try:
                 from arc_agent_pay.identity import ReputationClient
@@ -115,6 +150,11 @@ class ResearchAgent:
                 rep = ReputationClient()
             except Exception:  # noqa: BLE001 - onchain extra optional
                 rep = None
+        caps = SpendCaps(
+            daily_cap_usdc=daily_cap_usdc,
+            max_payments_per_hour=max_payments_per_hour,
+            provider_daily_cap_usdc=provider_daily_cap_usdc,
+        )
         gate = ReputationGate(
             reputation=rep,
             min_reputation=min_reputation,
@@ -122,8 +162,36 @@ class ResearchAgent:
             allowlist=allowlist,
             denylist=denylist,
             disabled=disabled,
+            caps=caps if caps.active else None,
+            spend_ledger=self._spend_ledger,
         )
         return gate if gate.active else None
+
+    def _wrap_on_event(self, on_event: OnEvent) -> OnEvent:
+        """Fold settled payments into the spend ledger, then forward the event.
+
+        This is the single recording point for cross-run caps: both execution
+        paths emit `payment_settled` through the PaymentClient they were given,
+        so wrapping here covers graph and linear alike.
+        """
+        if self._spend_ledger is None:
+            return on_event
+        ledger = self._spend_ledger
+
+        def _on_event(event: str, payload: dict) -> None:
+            if event == "payment_settled":
+                try:
+                    ledger.record(
+                        payload.get("service", ""),
+                        payload.get("amount_usdc", "0"),
+                        tx_reference=payload.get("tx_hash"),
+                    )
+                except Exception as e:  # noqa: BLE001 - recording is best-effort
+                    logger.warning("spend ledger record failed: %s", e)
+            if on_event:
+                on_event(event, payload)
+
+        return _on_event
 
     # ------------------------------------------------------------------
     # Path selection
@@ -155,6 +223,7 @@ class ResearchAgent:
 
     async def run_with_state(self, topic: str, on_event: OnEvent = None) -> AgentState:
         """Run the agent and return the full AgentState (report + audit trail)."""
+        on_event = self._wrap_on_event(on_event)
         if self._should_use_graph():
             return await self._run_graph(topic, on_event)
         return await self._run_linear(topic, on_event)
