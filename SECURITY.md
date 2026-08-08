@@ -41,7 +41,27 @@ arc-agent-pay lets autonomous agents **spend money on their own**, so safety is 
   contract.
 - **Strict signature checks.** Verification requires the configured validator,
   canonical low-`s` ECDSA signatures, valid timing, matching evidence, and—when
-  used for capture—an approving verdict ([workflow/](arc_agent_pay/workflow/)).
+  used for release—an approving verdict ([workflow/](arc_agent_pay/workflow/)).
+
+## Escrow integrity
+
+- **Receiver-safe funding.** The payer signs EIP-3009
+  `receiveWithAuthorization`, which requires the escrow itself to submit the
+  authorization. A third-party relayer cannot front-run it and strand funds
+  without creating the corresponding order state.
+- **Funding binds the complete order.** The EIP-3009 authorization nonce is the
+  work-order hash, so changing the provider, validator, amount, deadline, task,
+  or any other term invalidates the payer's signature.
+- **Immutable settlement terms.** The Arc USDC address is immutable at deploy,
+  and the stored state is keyed by the hash of every order field. Release and
+  refund amounts and recipients come from that same committed order.
+- **No privileged drain.** The contract has no owner, fee, upgrade mechanism,
+  or administrative withdrawal.
+- **Validator liveness is not required.** A signed rejection refunds
+  immediately; otherwise the payer can refund after the committed timeout.
+- **Checks-effects-interactions.** Terminal state is written before USDC leaves
+  the escrow, and global non-reentrancy protects every external entry point
+  ([ValidationEscrow.vy](contracts/ValidationEscrow.vy)).
 
 ## Identity, reputation, and validation honesty
 
@@ -67,10 +87,13 @@ In production, keep roles separate:
 - **Testnet only.** This SDK is not audited and should not be pointed at mainnet funds.
 - **BudgetGuard is pre-signature software enforcement.** It prevents the SDK from signing over-budget payments. It cannot constrain someone who directly controls the same EOA private key outside the SDK.
 - **No trustless vault yet.** A contract-enforced spend cap would require holding funds in a contract wallet or vault and compatibility with the x402/EIP-3009 path. That design is intentionally not shipped until the Arc USDC/EIP-1271 compatibility question is verified.
-- **No escrow contract yet.** The workflow package defines and verifies orders,
-  delivery evidence, and validator verdicts. It does not currently hold,
-  capture, or refund funds; those guarantees begin only after the corresponding
-  contract is implemented, tested, and deployed.
+- **Escrow is implemented but not audited or publicly deployed.** The Vyper
+  source and local EVM tests enforce funding, release, rejection refund, and
+  timeout refund. Until an audited bytecode build is deployed and its address
+  published, no production escrow guarantee is claimed.
+- **Escrow verdict signatures are EOA-only today.** The contract verifies
+  canonical ECDSA signatures with `ecrecover`; EIP-1271 contract-wallet
+  validators are not yet supported.
 - **Reputation is only as good as the ecosystem.** Reputation/validation are useful when independent parties provide them; self-attestation only proves the plumbing works.
 
 ## Reporting a vulnerability

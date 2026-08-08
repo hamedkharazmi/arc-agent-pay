@@ -8,16 +8,20 @@ import pytest
 from eth_account import Account
 from pydantic import ValidationError
 
-from arc_agent_pay.exceptions import InvalidVerdictError
+from arc_agent_pay.exceptions import InvalidFundingAuthorizationError, InvalidVerdictError
 from arc_agent_pay.workflow import (
     DeliveryEvidence,
+    SignedFundingAuthorization,
     SignedValidationVerdict,
     ValidationVerdict,
     Verifier,
     WorkOrder,
     hash_content,
+    recover_funding_signer,
     recover_verdict_signer,
+    sign_funding_authorization,
     sign_verdict,
+    verify_funding_authorization,
     verify_signed_verdict,
     verdict_domain,
 )
@@ -25,8 +29,10 @@ from arc_agent_pay.workflow import (
 
 VALIDATOR_KEY = "0x" + "11" * 32
 OTHER_KEY = "0x" + "22" * 32
+PAYER_KEY = "0x" + "33" * 32
 VALIDATOR = Account.from_key(VALIDATOR_KEY).address.lower()
 OTHER_VALIDATOR = Account.from_key(OTHER_KEY).address.lower()
+PAYER_SIGNER = Account.from_key(PAYER_KEY).address.lower()
 
 ESCROW = "0x" + "aa" * 20
 OTHER_ESCROW = "0x" + "ab" * 20
@@ -164,6 +170,10 @@ def test_order_rejects_unsafe_or_ambiguous_values():
         _order(nonce="0x" + "00" * 32)
     with pytest.raises(ValidationError, match="greater than delivery_deadline"):
         _order(refund_after=DELIVERY_DEADLINE)
+    with pytest.raises(ValidationError, match="must be distinct"):
+        _order(payer=PROVIDER)
+    with pytest.raises(ValidationError, match="escrow must be distinct"):
+        _order(provider=ESCROW)
     with pytest.raises(ValidationError):
         _order(amount="100000")
     with pytest.raises(ValidationError):
@@ -211,6 +221,48 @@ def test_verdict_rejects_bad_score_and_window():
 def test_models_round_trip_through_json():
     signed = _signed()
     assert SignedValidationVerdict.model_validate_json(signed.model_dump_json()) == signed
+
+
+# ---------------------------------------------------------------------------
+# EIP-3009 escrow funding
+# ---------------------------------------------------------------------------
+
+def test_sign_and_verify_funding_authorization_round_trip():
+    order = _order(payer=PAYER_SIGNER)
+    signed = sign_funding_authorization(order, private_key=PAYER_KEY)
+
+    assert signed.order_hash == order.order_hash
+    assert recover_funding_signer(signed, order=order) == PAYER_SIGNER
+    assert verify_funding_authorization(signed, order=order) == PAYER_SIGNER
+
+
+def test_funding_signature_is_bound_to_order_token_chain_and_escrow():
+    order = _order(payer=PAYER_SIGNER)
+    signed = sign_funding_authorization(order, private_key=PAYER_KEY)
+
+    for changed in (
+        _order(payer=PAYER_SIGNER, amount=order.amount + 1),
+        _order(payer=PAYER_SIGNER, asset="0x" + "37" + "00" * 19),
+        _order(payer=PAYER_SIGNER, chain_id=order.chain_id + 1),
+        _order(payer=PAYER_SIGNER, escrow=OTHER_ESCROW),
+    ):
+        with pytest.raises(InvalidFundingAuthorizationError, match="order_hash"):
+            verify_funding_authorization(signed, order=changed)
+
+
+def test_funding_refuses_wrong_key_and_declared_payer():
+    order = _order(payer=PAYER_SIGNER)
+    with pytest.raises(InvalidFundingAuthorizationError, match="funding key"):
+        sign_funding_authorization(order, private_key=OTHER_KEY)
+
+    signed = sign_funding_authorization(order, private_key=PAYER_KEY)
+    falsely_labeled = SignedFundingAuthorization(
+        order_hash=signed.order_hash,
+        payer=OTHER_VALIDATOR,
+        signature=signed.signature,
+    )
+    with pytest.raises(InvalidFundingAuthorizationError, match="declared payer"):
+        verify_funding_authorization(falsely_labeled, order=order)
 
 
 # ---------------------------------------------------------------------------

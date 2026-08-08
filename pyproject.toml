@@ -56,10 +56,13 @@ all = [
 
 [dependency-groups]
 dev = [
+    "eth-tester[py-evm]>=0.13.0b1",
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
     "ruff>=0.4",
+    "vyper==0.4.3",
+    "web3>=7.0",
 ]
 
 [project.scripts]

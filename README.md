@@ -107,7 +107,7 @@ arc_agent_pay/                  core SDK — minimal deps
     semantic.py    SemanticServiceRegistry — embeddings + Chroma ([rag] extra)
   llm/             provider-agnostic LLM layer (OpenAI / ArcAPIs / template)
   identity/        ERC-8004 onchain agent identity + reputation ([onchain] extra)
-  workflow/        evidence-bound work orders + signed validator verdicts
+  workflow/        work orders + escrow funding/settlement clients
   onchain/         verified ERC-8004 addresses + ABIs (Arc Testnet)
   observability/   Langfuse tracing (no-op fallback) + offline eval harness
   mcp_server/      Model Context Protocol server ([mcp] extra)
@@ -115,6 +115,8 @@ arc_agent_pay/                  core SDK — minimal deps
     graph.py       real LangGraph tool-calling agent (the [agent] extra)
     linear.py      dependency-light plan → fetch → synthesize fallback
     trust.py       ReputationGate — reputation-gated spending policy
+contracts/
+  ValidationEscrow.vy   contract-enforced release/rejection/timeout state machine
 ```
 
 ---
@@ -155,8 +157,8 @@ agent = ResearchAgent(
 
 ## Validation-gated workflow protocol
 
-The SDK defines the partner-neutral messages needed by an escrow workflow,
-without coupling them to one validator or contract:
+The SDK defines partner-neutral workflow messages and ships a matching Vyper
+escrow contract without coupling validation to one service:
 
 - `WorkOrder` fixes the escrow, parties, asset, amount, task hash, validator,
   delivery deadline, refund deadline, chain, and unique nonce before work starts.
@@ -164,11 +166,13 @@ without coupling them to one validator or contract:
 - `ValidationVerdict` binds approve/reject, score, reason hash, and validity window
   to the exact order and complete delivery commitment (content, URI, and time).
 - `Verifier` is the async interface an independent validation service implements.
+- `EscrowClient` funds and resolves those orders against `ValidationEscrow.vy`.
 
 Validator verdicts use EIP-712 domain separation by chain and escrow contract.
 Strict verification checks every order and delivery binding, timing constraint,
 validator identity, and canonical signature before a verdict can authorize
-capture.
+release. Funding uses EIP-3009 `receiveWithAuthorization`: the payer signs once,
+and only the named escrow can pull the exact order amount.
 
 ```python
 import secrets
@@ -176,9 +180,11 @@ import time
 
 from arc_agent_pay import (
     DeliveryEvidence,
+    EscrowClient,
     ValidationVerdict,
     WorkOrder,
     hash_content,
+    sign_funding_authorization,
     sign_verdict,
     verify_signed_verdict,
 )
@@ -197,6 +203,10 @@ order = WorkOrder(
     task_hash=hash_content(task_text),
     nonce="0x" + secrets.token_hex(32),
 )
+
+escrow = EscrowClient(order.escrow, account=relayer_account)
+funding = sign_funding_authorization(order, private_key=payer_private_key)
+escrow.fund(order, funding)
 
 delivery = DeliveryEvidence(
     order_hash=order.order_hash,
@@ -220,11 +230,15 @@ verify_signed_verdict(
     now=now + 1_000,
     require_approval=True,
 )
+escrow.release(order, delivery, signed)
 ```
 
-This release provides the protocol and cryptographic verification layer. It
-does **not** yet hold, capture, or refund funds; the Arc escrow contract and
-persistent state machine are the next implementation slice.
+An approving verdict releases the fixed amount to the provider. A rejecting
+verdict refunds immediately, and `escrow.refund_timeout(order)` returns funds
+after `refund_after` if no validator responds. The source, full state-machine
+tests, and deployment instructions live in [`contracts/`](contracts/README.md).
+No public deployment is claimed yet; the contract remains testnet-only and
+unaudited.
 
 ---
 

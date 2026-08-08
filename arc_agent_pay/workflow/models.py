@@ -129,6 +129,10 @@ class WorkOrder(_FrozenModel):
     def deadlines_are_ordered(self) -> Self:
         if self.refund_after <= self.delivery_deadline:
             raise ValueError("refund_after must be greater than delivery_deadline")
+        if len({self.payer, self.provider, self.validator}) != 3:
+            raise ValueError("payer, provider, and validator must be distinct")
+        if self.escrow in {self.payer, self.provider, self.validator}:
+            raise ValueError("escrow must be distinct from every workflow party")
         return self
 
     @property
@@ -240,4 +244,18 @@ class SignedValidationVerdict(_FrozenModel):
     signature: str
 
     _validator = field_validator("validator", mode="before")(_normalize_address)
+    _signature = field_validator("signature", mode="before")(_normalize_signature)
+
+
+class SignedFundingAuthorization(_FrozenModel):
+    """Payer signature authorizing this escrow to receive one order's funds."""
+
+    order_hash: str
+    payer: str
+    signature: str
+
+    _order_hash = field_validator("order_hash", mode="before")(
+        _normalize_nonzero_bytes32
+    )
+    _payer = field_validator("payer", mode="before")(_normalize_address)
     _signature = field_validator("signature", mode="before")(_normalize_signature)

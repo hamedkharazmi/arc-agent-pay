@@ -29,11 +29,15 @@ from .registry import Discovery, SemanticServiceRegistry, ServiceRegistry
 from .spending import InMemorySpendLedger, SpendCaps, SqliteSpendLedger
 from .workflow import (
     DeliveryEvidence,
+    EscrowClient,
+    EscrowStatus,
+    SignedFundingAuthorization,
     SignedValidationVerdict,
     ValidationVerdict,
     Verifier,
     WorkOrder,
     hash_content,
+    sign_funding_authorization,
     sign_verdict,
     verify_signed_verdict,
 )
@@ -46,6 +50,7 @@ from .exceptions import (
     ServiceNotFoundError,
     ServiceRegistrationError,
     WorkflowError,
+    InvalidFundingAuthorizationError,
     InvalidVerdictError,
 )
 
@@ -65,10 +70,14 @@ __all__ = [
     # Validation-gated workflows
     "WorkOrder",
     "DeliveryEvidence",
+    "EscrowClient",
+    "EscrowStatus",
+    "SignedFundingAuthorization",
     "ValidationVerdict",
     "SignedValidationVerdict",
     "Verifier",
     "hash_content",
+    "sign_funding_authorization",
     "sign_verdict",
     "verify_signed_verdict",
     # Models
@@ -87,5 +96,6 @@ __all__ = [
     "ServiceNotFoundError",
     "ServiceRegistrationError",
     "WorkflowError",
+    "InvalidFundingAuthorizationError",
     "InvalidVerdictError",
 ]

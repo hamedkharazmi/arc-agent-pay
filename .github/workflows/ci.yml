@@ -47,10 +47,17 @@ jobs:
         # Audits the resolved dependency set. CVE-2026-45829 (chromadb) is
         # ignored: no fixed release exists yet — re-check and drop the ignore
         # once chromadb ships a patch.
+        # PYSEC-2023-142 is limited to Vyper 0.2.15, 0.2.16, and 0.3.0 (fixed
+        # in 0.3.1), but its OSV range incorrectly marks every version.
+        # PYSEC-2025-33 is fixed in Vyper 0.4.1; this repo pins 0.4.3, but the
+        # PyPI advisory feed still reports it. Keep both ignores version-pinned.
         run: |
           uv export --group dev --extra all \
             --no-emit-project --no-hashes > audit-reqs.txt
-          uvx pip-audit -r audit-reqs.txt --ignore-vuln CVE-2026-45829
+          uvx pip-audit -r audit-reqs.txt \
+            --ignore-vuln CVE-2026-45829 \
+            --ignore-vuln PYSEC-2023-142 \
+            --ignore-vuln PYSEC-2025-33
 
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2

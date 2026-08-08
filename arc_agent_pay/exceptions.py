@@ -87,3 +87,7 @@ class WorkflowError(ArcAgentPayError):
 
 class InvalidVerdictError(WorkflowError):
     """A validation verdict failed binding, timing, or signature checks."""
+
+
+class InvalidFundingAuthorizationError(WorkflowError):
+    """An escrow funding authorization failed binding or signature checks."""

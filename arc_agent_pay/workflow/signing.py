@@ -68,6 +68,22 @@ def verdict_message(verdict: ValidationVerdict) -> dict[str, Any]:
     }
 
 
+def signature_parts(signature: str) -> tuple[int, bytes, bytes]:
+    """Split a canonical 65-byte ECDSA signature into contract-ready ``v,r,s``."""
+    try:
+        raw = bytes.fromhex(signature[2:] if signature.startswith("0x") else signature)
+    except (TypeError, ValueError) as exc:
+        raise InvalidVerdictError("verdict signature is malformed") from exc
+    if len(raw) != 65:
+        raise InvalidVerdictError("verdict signature must be exactly 65 bytes")
+    r = int.from_bytes(raw[:32], byteorder="big")
+    s = int.from_bytes(raw[32:64], byteorder="big")
+    v = raw[64]
+    if not 0 < r < _SECP256K1_N or not 0 < s <= _SECP256K1_HALF_N or v not in (27, 28):
+        raise InvalidVerdictError("verdict signature is not canonical")
+    return v, raw[:32], raw[32:64]
+
+
 def sign_verdict(
     verdict: ValidationVerdict,
     *,
@@ -103,12 +119,8 @@ def recover_verdict_signer(
     verifying_contract: str,
 ) -> str:
     """Recover the EOA that signed a verdict under the supplied domain."""
-    signature = bytes.fromhex(signed.signature[2:])
-    r = int.from_bytes(signature[:32], byteorder="big")
-    s = int.from_bytes(signature[32:64], byteorder="big")
-    v = signature[64]
-    if not 0 < r < _SECP256K1_N or not 0 < s <= _SECP256K1_HALF_N or v not in (27, 28):
-        raise InvalidVerdictError("verdict signature is not canonical")
+    v, r, s = signature_parts(signed.signature)
+    signature = r + s + bytes([v])
     signable = encode_typed_data(
         domain_data=verdict_domain(
             chain_id=chain_id,
