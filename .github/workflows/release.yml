@@ -25,8 +25,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Validate tag matches package version
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          test "v$VERSION" = "$GITHUB_REF_NAME" || {
+            echo "Tag $GITHUB_REF_NAME does not match package version $VERSION"
+            exit 1
+          }
+
       - name: Build distributions
         run: uv build
+
+      - name: Validate distributions
+        run: uvx twine check dist/*
 
       - uses: actions/upload-artifact@v4
         with:
