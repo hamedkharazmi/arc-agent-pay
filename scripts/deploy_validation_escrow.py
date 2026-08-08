@@ -8,6 +8,7 @@ for the command invocation; never store it in the repository.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -55,10 +56,11 @@ def main() -> None:
     if not w3.eth.get_code(asset):
         raise RuntimeError(f"asset has no contract code: {asset}")
 
+    source = CONTRACT.read_text()
     compiled = compile_code(
-        CONTRACT.read_text(),
+        source,
         contract_path=CONTRACT,
-        output_formats=["abi", "bytecode"],
+        output_formats=["abi", "bytecode", "bytecode_runtime"],
     )
     account = Account.from_key(private_key)
     factory = w3.eth.contract(abi=compiled["abi"], bytecode=compiled["bytecode"])
@@ -75,8 +77,12 @@ def main() -> None:
     if int(receipt.get("status", 0)) != 1:
         raise RuntimeError(f"deployment reverted ({tx_hash.hex()})")
     address = receipt.get("contractAddress")
-    if not address or not w3.eth.get_code(address):
+    runtime_code = w3.eth.get_code(address) if address else b""
+    if not address or not runtime_code:
         raise RuntimeError("deployment receipt did not contain a live contract")
+    deployed = w3.eth.contract(address=address, abi=compiled["abi"])
+    if deployed.functions.asset().call() != asset:
+        raise RuntimeError("deployed contract reports the wrong immutable asset")
 
     print(
         json.dumps(
@@ -87,6 +93,13 @@ def main() -> None:
                 "asset": asset,
                 "chain_id": actual_chain_id,
                 "source": str(CONTRACT),
+                "block_number": receipt.get("blockNumber"),
+                "gas_used": receipt.get("gasUsed"),
+                "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+                "creation_bytecode_sha256": hashlib.sha256(
+                    bytes.fromhex(compiled["bytecode"][2:])
+                ).hexdigest(),
+                "runtime_code_keccak": w3.keccak(runtime_code).hex(),
             },
             indent=2,
         )

@@ -55,5 +55,21 @@ ESCROW_DEPLOYER_PRIVATE_KEY=... \
   uv run python scripts/deploy_validation_escrow.py --confirm-testnet
 ```
 
+Use a dedicated deployer, then record the script's transaction, block, source
+hash, bytecode hash, and runtime-code hash output. Do not reuse an application
+seller or payer key as the deployer.
+
+After deployment, exercise one capped release (the default is 0.001 USDC and
+the script refuses amounts above 0.01 USDC):
+
+```bash
+ESCROW_SMOKE_PAYER_PRIVATE_KEY=... \
+ESCROW_SMOKE_VALIDATOR_PRIVATE_KEY=... \
+  uv run python scripts/smoke_validation_escrow.py \
+    --escrow 0x... \
+    --provider 0x... \
+    --confirm-testnet-spend
+```
+
 The contract is unaudited. Do not deploy it on mainnet or use it with funds you
 cannot afford to lose.
