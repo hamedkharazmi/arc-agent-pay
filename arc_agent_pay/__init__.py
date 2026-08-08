@@ -27,6 +27,16 @@ from .interceptor import PaymentClient
 from .models import Chain, Wallet, Service, Payment, Budget, PaymentRequest
 from .registry import Discovery, SemanticServiceRegistry, ServiceRegistry
 from .spending import InMemorySpendLedger, SpendCaps, SqliteSpendLedger
+from .workflow import (
+    DeliveryEvidence,
+    SignedValidationVerdict,
+    ValidationVerdict,
+    Verifier,
+    WorkOrder,
+    hash_content,
+    sign_verdict,
+    verify_signed_verdict,
+)
 from .exceptions import (
     ArcAgentPayError,
     InsufficientFundsError,
@@ -35,6 +45,8 @@ from .exceptions import (
     InvalidPaymentRequestError,
     ServiceNotFoundError,
     ServiceRegistrationError,
+    WorkflowError,
+    InvalidVerdictError,
 )
 
 __version__ = "0.1.0"
@@ -50,6 +62,15 @@ __all__ = [
     "SpendCaps",
     "InMemorySpendLedger",
     "SqliteSpendLedger",
+    # Validation-gated workflows
+    "WorkOrder",
+    "DeliveryEvidence",
+    "ValidationVerdict",
+    "SignedValidationVerdict",
+    "Verifier",
+    "hash_content",
+    "sign_verdict",
+    "verify_signed_verdict",
     # Models
     "Chain",
     "Wallet",
@@ -65,4 +86,6 @@ __all__ = [
     "InvalidPaymentRequestError",
     "ServiceNotFoundError",
     "ServiceRegistrationError",
+    "WorkflowError",
+    "InvalidVerdictError",
 ]

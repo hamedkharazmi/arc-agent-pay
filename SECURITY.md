@@ -28,6 +28,21 @@ arc-agent-pay lets autonomous agents **spend money on their own**, so safety is 
 - **Budget is checked before signing.** Failed budget checks prevent signature creation, not just HTTP retry.
 - **On-chain writes are receipt-checked.** ERC-8004 write helpers check transaction receipt status and raise on revert so a failed write is not reported as success ([identity/erc8004.py](arc_agent_pay/identity/erc8004.py)).
 
+## Validation verdict integrity
+
+- **Orders are fixed before delivery.** Work-order hashes bind the escrow,
+  parties, validator, asset, amount, chain, deadlines, task hash, and a unique
+  nonce using a Solidity-compatible fixed-width layout.
+- **Verdicts are delivery-bound.** A validator signs the exact order hash,
+  delivered-content hash, URI commitment, and delivery time—not a mutable URL
+  or an unstructured success flag.
+- **EIP-712 replay separation.** Verdict domains bind both chain id and escrow
+  contract, preventing a signature from being reused on another chain or
+  contract.
+- **Strict signature checks.** Verification requires the configured validator,
+  canonical low-`s` ECDSA signatures, valid timing, matching evidence, and—when
+  used for capture—an approving verdict ([workflow/](arc_agent_pay/workflow/)).
+
 ## Identity, reputation, and validation honesty
 
 ERC-8004 reputation and validation are only meaningful when they come from a party **other than the agent**. This SDK exposes the plumbing: identity reads/writes, reputation reads/writes, validation request/response, and reputation-gated spending. It does not magically make self-attestation independent.
@@ -52,6 +67,10 @@ In production, keep roles separate:
 - **Testnet only.** This SDK is not audited and should not be pointed at mainnet funds.
 - **BudgetGuard is pre-signature software enforcement.** It prevents the SDK from signing over-budget payments. It cannot constrain someone who directly controls the same EOA private key outside the SDK.
 - **No trustless vault yet.** A contract-enforced spend cap would require holding funds in a contract wallet or vault and compatibility with the x402/EIP-3009 path. That design is intentionally not shipped until the Arc USDC/EIP-1271 compatibility question is verified.
+- **No escrow contract yet.** The workflow package defines and verifies orders,
+  delivery evidence, and validator verdicts. It does not currently hold,
+  capture, or refund funds; those guarantees begin only after the corresponding
+  contract is implemented, tested, and deployed.
 - **Reputation is only as good as the ecosystem.** Reputation/validation are useful when independent parties provide them; self-attestation only proves the plumbing works.
 
 ## Reporting a vulnerability

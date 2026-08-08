@@ -75,3 +75,15 @@ class ServiceNotFoundError(ArcAgentPayError):
 
 class ServiceRegistrationError(ArcAgentPayError):
     """Failed to register a local mock service."""
+
+
+# ---------------------------------------------------------------------------
+# Validation-gated workflow errors
+# ---------------------------------------------------------------------------
+
+class WorkflowError(ArcAgentPayError):
+    """Base exception for validation-gated payment workflows."""
+
+
+class InvalidVerdictError(WorkflowError):
+    """A validation verdict failed binding, timing, or signature checks."""

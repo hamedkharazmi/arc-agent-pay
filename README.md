@@ -107,6 +107,7 @@ arc_agent_pay/                  core SDK — minimal deps
     semantic.py    SemanticServiceRegistry — embeddings + Chroma ([rag] extra)
   llm/             provider-agnostic LLM layer (OpenAI / ArcAPIs / template)
   identity/        ERC-8004 onchain agent identity + reputation ([onchain] extra)
+  workflow/        evidence-bound work orders + signed validator verdicts
   onchain/         verified ERC-8004 addresses + ABIs (Arc Testnet)
   observability/   Langfuse tracing (no-op fallback) + offline eval harness
   mcp_server/      Model Context Protocol server ([mcp] extra)
@@ -149,6 +150,81 @@ agent = ResearchAgent(
     provider_denylist=[999000001],    # never pay this provider
 )
 ```
+
+---
+
+## Validation-gated workflow protocol
+
+The SDK defines the partner-neutral messages needed by an escrow workflow,
+without coupling them to one validator or contract:
+
+- `WorkOrder` fixes the escrow, parties, asset, amount, task hash, validator,
+  delivery deadline, refund deadline, chain, and unique nonce before work starts.
+- `DeliveryEvidence` binds the delivered content hash to that order.
+- `ValidationVerdict` binds approve/reject, score, reason hash, and validity window
+  to the exact order and complete delivery commitment (content, URI, and time).
+- `Verifier` is the async interface an independent validation service implements.
+
+Validator verdicts use EIP-712 domain separation by chain and escrow contract.
+Strict verification checks every order and delivery binding, timing constraint,
+validator identity, and canonical signature before a verdict can authorize
+capture.
+
+```python
+import secrets
+import time
+
+from arc_agent_pay import (
+    DeliveryEvidence,
+    ValidationVerdict,
+    WorkOrder,
+    hash_content,
+    sign_verdict,
+    verify_signed_verdict,
+)
+
+now = int(time.time())
+order = WorkOrder(
+    escrow=escrow_address,
+    payer=payer_address,
+    provider=provider_address,
+    validator=validator_address,
+    asset=usdc_address,
+    amount=100_000,  # 0.10 USDC in 6-decimal base units
+    chain_id=5_042_002,
+    delivery_deadline=now + 3_600,
+    refund_after=now + 7_200,
+    task_hash=hash_content(task_text),
+    nonce="0x" + secrets.token_hex(32),
+)
+
+delivery = DeliveryEvidence(
+    order_hash=order.order_hash,
+    evidence_hash=hash_content(report_bytes),
+    evidence_uri="ipfs://...",
+    delivered_at=now + 600,
+)
+verdict = ValidationVerdict.for_delivery(
+    delivery,
+    approved=True,
+    score=95,
+    reason="Meets the acceptance criteria",
+    issued_at=now + 900,
+    valid_until=now + 1_800,
+)
+signed = sign_verdict(verdict, private_key=validator_key, order=order)
+verify_signed_verdict(
+    signed,
+    order=order,
+    delivery=delivery,
+    now=now + 1_000,
+    require_approval=True,
+)
+```
+
+This release provides the protocol and cryptographic verification layer. It
+does **not** yet hold, capture, or refund funds; the Arc escrow contract and
+persistent state machine are the next implementation slice.
 
 ---
 
