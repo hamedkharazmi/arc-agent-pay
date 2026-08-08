@@ -59,6 +59,11 @@ Use a dedicated deployer, then record the script's transaction, block, source
 hash, bytecode hash, and runtime-code hash output. Do not reuse an application
 seller or payer key as the deployer.
 
+The current unaudited Arc Testnet deployment is:
+
+- `ValidationEscrow`: [`0xcff39Aa955977C298191E4bbe7bDB17Bf5bc7887`](https://testnet.arcscan.app/address/0xcff39Aa955977C298191E4bbe7bDB17Bf5bc7887)
+- Deployment and smoke-test evidence: [`deployments/arc-testnet.json`](deployments/arc-testnet.json)
+
 After deployment, exercise one capped release (the default is 0.001 USDC and
 the script refuses amounts above 0.01 USDC):
 

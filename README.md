@@ -237,8 +237,10 @@ An approving verdict releases the fixed amount to the provider. A rejecting
 verdict refunds immediately, and `escrow.refund_timeout(order)` returns funds
 after `refund_after` if no validator responds. The source, full state-machine
 tests, and deployment instructions live in [`contracts/`](contracts/README.md).
-No public deployment is claimed yet; the contract remains testnet-only and
-unaudited.
+An unaudited Arc Testnet deployment and its successful low-value lifecycle
+evidence are recorded in
+[`contracts/deployments/arc-testnet.json`](contracts/deployments/arc-testnet.json).
+It remains testnet-only and is not presented as production-safe.
 
 ---
 

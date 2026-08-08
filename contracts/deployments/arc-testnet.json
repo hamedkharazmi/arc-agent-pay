@@ -1,0 +1,42 @@
+{
+  "network": {
+    "name": "Arc Testnet",
+    "chain_id": 5042002,
+    "rpc": "https://rpc.testnet.arc.network",
+    "explorer": "https://testnet.arcscan.app"
+  },
+  "contract": {
+    "name": "ValidationEscrow",
+    "address": "0xcff39Aa955977C298191E4bbe7bDB17Bf5bc7887",
+    "asset": "0x3600000000000000000000000000000000000000",
+    "deployer": "0x7636EECF45bbc37D0D6BF52518DBd8bD2bEFdF80",
+    "deployment_transaction": "0xdaf1e6dd7f18a9f4866d38f88b92f15d254b9a6134a6f066f4030c92ea2c2812",
+    "deployment_block": 55954070,
+    "deployed_at": "2026-08-08T14:03:52+00:00",
+    "gas_used": 1698466,
+    "compiler": "vyper 0.4.3",
+    "source_commit": "06b61630963203a761275afe38e72d885926d701",
+    "source_sha256": "42016c7f52ae5710c778e674f3cb5bdfe7cf7370acb9eb9848863132fcbd97f0",
+    "creation_bytecode_sha256": "17995b7356500f6682ccc790c6b6ecca710abf59dd629737dceb1a58009e7110",
+    "runtime_code_keccak": "0x6db7cb993014c000157f5652448bfb2e9bebe3d7c6eef33b0010fa28de5f32a1",
+    "runtime_code_bytes": 7628,
+    "audited": false
+  },
+  "smoke_test": {
+    "order_hash": "0x05906fcd68dc68a30070d6639533f424c80cea4083f65a1225c45f7dc8816050",
+    "amount_base_units": 1000,
+    "payer": "0xd794C5E20D201519dF8B527fA821D3081DF06c58",
+    "provider": "0x0638c8E8790a9aA8C64eff3A6117d22524b527a5",
+    "validator": "0xde6e58694828279f68A98e44b9C4d6e2Cd382aB8",
+    "fund_transaction": "0xb2f8f56140e39f62798e000d3e8cf585d63d39ec4a80b4abbadc85cc3d192b00",
+    "fund_block": 55954157,
+    "funded_at": "2026-08-08T14:04:37+00:00",
+    "fund_gas_used": 115189,
+    "release_transaction": "0xe2c195154bcc4fd3041bf514467a50834d063a827f7aafcd6c19c7584a0e5f8f",
+    "release_block": 55954165,
+    "released_at": "2026-08-08T14:04:41+00:00",
+    "release_gas_used": 75655,
+    "final_status": "RELEASED",
+    "provider_balance_delta_base_units": 1000
+  }
+}
