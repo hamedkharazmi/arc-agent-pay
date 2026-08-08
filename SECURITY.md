@@ -88,9 +88,10 @@ In production, keep roles separate:
 - **BudgetGuard is pre-signature software enforcement.** It prevents the SDK from signing over-budget payments. It cannot constrain someone who directly controls the same EOA private key outside the SDK.
 - **No trustless vault yet.** A contract-enforced spend cap would require holding funds in a contract wallet or vault and compatibility with the x402/EIP-3009 path. That design is intentionally not shipped until the Arc USDC/EIP-1271 compatibility question is verified.
 - **Escrow is deployed on testnet but not audited.** The Vyper source, local EVM
-  tests, and a low-value Arc Testnet lifecycle exercise cover funding, release,
-  rejection refund, and timeout refund. The deployment evidence is public, but
-  no production or mainnet escrow guarantee is claimed.
+  tests, and low-value Arc Testnet release and rejection-refund exercises cover
+  funding and terminal settlement; local tests also cover timeout refund. The
+  deployment evidence is public, but no production or mainnet guarantee is
+  claimed.
 - **Escrow verdict signatures are EOA-only today.** The contract verifies
   canonical ECDSA signatures with `ecrecover`; EIP-1271 contract-wallet
   validators are not yet supported.

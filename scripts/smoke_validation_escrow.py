@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one low-value fund -> approved release on Arc Testnet.
+"""Run one low-value release or signed-rejection refund on Arc Testnet.
 
 This deliberately uses dedicated smoke-test credentials and refuses every
 other chain. It prints transaction and balance evidence, never private keys.
@@ -46,6 +46,12 @@ def main() -> None:
     parser.add_argument("--escrow", required=True, help="deployed ValidationEscrow")
     parser.add_argument("--provider", required=True, help="recipient of the test release")
     parser.add_argument("--amount", type=int, default=1_000, help="USDC base units")
+    parser.add_argument(
+        "--outcome",
+        choices=("release", "reject"),
+        default="release",
+        help="terminal path to exercise",
+    )
     parser.add_argument("--rpc", default=os.environ.get("ARC_TESTNET_RPC", ARC_TESTNET_RPC))
     parser.add_argument(
         "--confirm-testnet-spend",
@@ -107,7 +113,7 @@ def main() -> None:
         chain_id=ARC_TESTNET_CHAIN_ID,
         delivery_deadline=now + 600,
         refund_after=now + 1_200,
-        task_hash=hash_content("arc-agent-pay escrow smoke test"),
+        task_hash=hash_content(f"arc-agent-pay escrow {args.outcome} smoke test"),
         nonce="0x" + secrets.token_hex(32),
     )
 
@@ -117,27 +123,35 @@ def main() -> None:
     funded_at = int(w3.eth.get_block("latest")["timestamp"])
     delivery = DeliveryEvidence(
         order_hash=order.order_hash,
-        evidence_hash=hash_content("arc-agent-pay escrow smoke result"),
-        evidence_uri="urn:arc-agent-pay:smoke-test",
+        evidence_hash=hash_content(f"arc-agent-pay escrow {args.outcome} smoke result"),
+        evidence_uri=f"urn:arc-agent-pay:smoke-test:{args.outcome}",
         delivered_at=funded_at,
     )
     verdict = ValidationVerdict.for_delivery(
         delivery,
-        approved=True,
-        score=100,
-        reason="automated Arc Testnet smoke test passed",
+        approved=args.outcome == "release",
+        score=100 if args.outcome == "release" else 0,
+        reason=f"automated Arc Testnet {args.outcome} smoke test",
         issued_at=funded_at,
         valid_until=min(funded_at + 300, order.refund_after),
     )
     signed_verdict = sign_verdict(verdict, private_key=validator_key, order=order)
-    release_tx = escrow.release(order, delivery, signed_verdict)
+    if args.outcome == "release":
+        settlement_tx = escrow.release(order, delivery, signed_verdict)
+        expected_status = EscrowStatus.RELEASED
+        expected_provider_delta = args.amount
+    else:
+        settlement_tx = escrow.refund_rejected(order, delivery, signed_verdict)
+        expected_status = EscrowStatus.REFUNDED
+        expected_provider_delta = 0
 
     final_status = escrow.status(order)
     provider_after = token.functions.balanceOf(provider).call()
-    if final_status is not EscrowStatus.RELEASED:
+    if final_status is not expected_status:
         raise RuntimeError(f"unexpected final escrow status: {final_status.name}")
-    if provider_after - provider_before != args.amount:
-        raise RuntimeError("provider did not receive the exact order amount")
+    provider_delta = provider_after - provider_before
+    if provider_delta != expected_provider_delta:
+        raise RuntimeError("provider balance changed by an unexpected amount")
 
     print(
         json.dumps(
@@ -146,14 +160,15 @@ def main() -> None:
                 "escrow": escrow_address,
                 "asset": asset,
                 "order_hash": order.order_hash,
+                "outcome": args.outcome,
                 "amount_base_units": args.amount,
                 "payer": payer.address,
                 "provider": provider,
                 "validator": validator.address,
                 "fund_transaction": fund_tx,
-                "release_transaction": release_tx,
+                "settlement_transaction": settlement_tx,
                 "final_status": final_status.name,
-                "provider_balance_delta": provider_after - provider_before,
+                "provider_balance_delta": provider_delta,
                 "payer_native_balance_before_wei": payer_native_before,
             },
             indent=2,

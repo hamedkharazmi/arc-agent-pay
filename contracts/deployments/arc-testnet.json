@@ -38,5 +38,22 @@
     "release_gas_used": 75655,
     "final_status": "RELEASED",
     "provider_balance_delta_base_units": 1000
+  },
+  "rejection_smoke_test": {
+    "order_hash": "0xe718c9e7ca0c11468c494300e207a41abd96eb2a493775405f516b3e525beffa",
+    "amount_base_units": 1000,
+    "payer": "0xd794C5E20D201519dF8B527fA821D3081DF06c58",
+    "provider": "0x0638c8E8790a9aA8C64eff3A6117d22524b527a5",
+    "validator": "0xde6e58694828279f68A98e44b9C4d6e2Cd382aB8",
+    "fund_transaction": "0xeb9452ad2b1d140a93b385e8fc8a8e538bf526c634c84619ae0d20f28117b101",
+    "fund_block": 55955107,
+    "funded_at": "2026-08-08T14:12:49+00:00",
+    "fund_gas_used": 115185,
+    "refund_transaction": "0xfbe8f1b94c5aafbd07023937253b47aef558d94329af3d6e3b8e86d1f8ca25ce",
+    "refund_block": 55955120,
+    "refunded_at": "2026-08-08T14:12:55+00:00",
+    "refund_gas_used": 71154,
+    "final_status": "REFUNDED",
+    "provider_balance_delta_base_units": 0
   }
 }

@@ -64,8 +64,8 @@ The current unaudited Arc Testnet deployment is:
 - `ValidationEscrow`: [`0xcff39Aa955977C298191E4bbe7bDB17Bf5bc7887`](https://testnet.arcscan.app/address/0xcff39Aa955977C298191E4bbe7bDB17Bf5bc7887)
 - Deployment and smoke-test evidence: [`deployments/arc-testnet.json`](deployments/arc-testnet.json)
 
-After deployment, exercise one capped release (the default is 0.001 USDC and
-the script refuses amounts above 0.01 USDC):
+After deployment, exercise a capped release (the default is 0.001 USDC and the
+script refuses amounts above 0.01 USDC):
 
 ```bash
 ESCROW_SMOKE_PAYER_PRIVATE_KEY=... \
@@ -75,6 +75,9 @@ ESCROW_SMOKE_VALIDATOR_PRIVATE_KEY=... \
     --provider 0x... \
     --confirm-testnet-spend
 ```
+
+Run the signed-rejection refund path with the same cap by adding
+`--outcome reject`.
 
 The contract is unaudited. Do not deploy it on mainnet or use it with funds you
 cannot afford to lose.
