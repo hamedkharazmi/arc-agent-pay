@@ -1,8 +1,9 @@
 name: Notify app repo
 
 # After CI succeeds on main, tell the (private) app repo to re-lock its SDK
-# pin — its bump-sdk.yml listens for this repository_dispatch, re-locks
-# uv.lock to the new main commit, re-runs the app tests, and pushes.
+# pin when installable SDK code or package metadata changed. Contract sources,
+# tests, docs, and repository tooling do not alter the app runtime and should
+# not trigger a production rebuild.
 #
 # One-time setup: add a fine-grained PAT as secret APP_REPO_DISPATCH_TOKEN
 # here, scoped to hamedkharazmi/arc-agent-pay-app with Contents: read/write
@@ -19,7 +20,38 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Check for app runtime changes
+        id: runtime
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_DISPATCH_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Compare with the SDK revision currently pinned by the app. This is
+          # robust to pushes containing more than one SDK commit. If the pin
+          # cannot be read or found locally, fail safe by dispatching.
+          PINNED_SHA="$({
+            gh api \
+              -H 'Accept: application/vnd.github.raw+json' \
+              repos/hamedkharazmi/arc-agent-pay-app/contents/uv.lock \
+              | sed -n 's/.*arc-agent-pay?branch=main#\([0-9a-f]\{40\}\).*/\1/p'
+          } || true)"
+
+          CHANGED=true
+          if [ -n "$PINNED_SHA" ] && git cat-file -e "$PINNED_SHA^{commit}"; then
+            if git diff --quiet "$PINNED_SHA" "$SHA" -- arc_agent_pay pyproject.toml; then
+              CHANGED=false
+            fi
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "app pin: ${PINNED_SHA:-unknown}; runtime changes: $CHANGED"
+
       - name: Fire sdk-updated dispatch
+        if: steps.runtime.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.APP_REPO_DISPATCH_TOKEN }}
           SHA: ${{ github.event.workflow_run.head_sha }}
