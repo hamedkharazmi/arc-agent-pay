@@ -2,7 +2,7 @@
 
 All notable changes to `arc-agent-pay` are documented here.
 
-## Unreleased
+## 0.4.0 — 2026-08-09
 
 ### Added
 
@@ -11,6 +11,7 @@ All notable changes to `arc-agent-pay` are documented here.
 - `InMemoryPaymentStore` and `SqlitePaymentStore` lifecycle journals with
   atomic cross-process rolling-cap reservations.
 - Standard x402 payment identifiers and explicit `payment_id=` request resume.
+- Payment timeout errors expose the resumable payment identifier directly.
 - Durable payment metadata covering the selected requirement, recipient,
   asset, atomic amount, response status, timestamps, and settlement reference.
 
@@ -21,6 +22,10 @@ All notable changes to `arc-agent-pay` are documented here.
   `unknown` and retain their spend reservation instead of reopening budget.
 - The configured chain is used to select the exact x402 requirement that is
   checked, recorded, signed, and paid.
+- The x402 dependency floor is now 2.15, while Base and Base Sepolia retain
+  compatibility with legacy x402 v1 network names.
+- Payment-identifier wire handling no longer imports x402's unrelated optional
+  extension dependencies.
 
 ## 0.2.0 — 2026-08-08
 
