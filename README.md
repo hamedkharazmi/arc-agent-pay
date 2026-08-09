@@ -80,7 +80,7 @@ The core package (`PaymentClient`, `ServiceRegistry`, `BudgetGuard`) has minimal
 | `[agent]` | `langgraph`, `langchain-core`, `langchain-openai`, `openai` | Building the LangGraph tool-calling research agent |
 | `[llm]` | `openai` | Just the LLM synthesis layer (provider-agnostic) |
 | `[rag]` | `chromadb`, `fastembed` | Semantic (embedding-based) service discovery |
-| `[onchain]` | `web3` | ERC-8004 onchain agent identity + reputation |
+| `[onchain]` | `web3` | ERC-8004 identity/reputation and ERC-8183 job contracts |
 | `[observability]` | `langfuse` | Trace agent runs (Langfuse; optional, no-op without keys) |
 | `[mcp]` | `mcp` | Expose discovery + pay-and-fetch as an MCP server |
 | `[all]` | every extra above | Trying out everything at once |
@@ -108,7 +108,7 @@ arc_agent_pay/                  core SDK — minimal deps
   llm/             provider-agnostic LLM layer (OpenAI / ArcAPIs / template)
   identity/        ERC-8004 onchain agent identity + reputation ([onchain] extra)
   workflow/        work orders + escrow funding/settlement clients
-  onchain/         verified ERC-8004 addresses + ABIs (Arc Testnet)
+  onchain/         verified addresses + contract ABIs
   observability/   Langfuse tracing (no-op fallback) + offline eval harness
   mcp_server/      Model Context Protocol server ([mcp] extra)
   agent/           ResearchAgent
@@ -241,6 +241,14 @@ An unaudited Arc Testnet deployment and its successful low-value lifecycle
 evidence are recorded in
 [`contracts/deployments/arc-testnet.json`](contracts/deployments/arc-testnet.json).
 It remains testnet-only and is not presented as production-safe.
+
+For interoperability, `Erc8183Client` also targets the published reference ABI
+for the current **draft** ERC-8183 job lifecycle (`Open → Funded → Submitted →
+Completed/Rejected/Expired`). The adapter maps `WorkOrder`, delivery, and full
+verdict commitments without claiming that `ValidationEscrow.vy` itself implements
+ERC-8183. The draft currently has ABI differences between its prose and reference
+contract, so read the pinned profile and compatibility notes before using a
+deployment: [`docs/erc-8183-compatibility.md`](docs/erc-8183-compatibility.md).
 
 ---
 
