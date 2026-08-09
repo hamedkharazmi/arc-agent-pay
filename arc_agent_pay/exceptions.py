@@ -65,6 +65,14 @@ class InvalidPaymentRequestError(ArcAgentPayError):
     """Could not parse the 402 response body into a PaymentRequest."""
 
 
+class PaymentPolicyError(ArcAgentPayError):
+    """A payment was refused by the caller's autonomous-spending policy."""
+
+
+class PaymentStoreError(ArcAgentPayError):
+    """The durable payment journal could not safely reserve or update a payment."""
+
+
 # ---------------------------------------------------------------------------
 # Registry errors
 # ---------------------------------------------------------------------------

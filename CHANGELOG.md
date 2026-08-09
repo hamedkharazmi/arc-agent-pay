@@ -2,6 +2,26 @@
 
 All notable changes to `arc-agent-pay` are documented here.
 
+## Unreleased
+
+### Added
+
+- `PaymentPolicy` for pre-signature per-payment, rolling spend, host, network,
+  asset, recipient, and kill-switch controls directly on `PaymentClient`.
+- `InMemoryPaymentStore` and `SqlitePaymentStore` lifecycle journals with
+  atomic cross-process rolling-cap reservations.
+- Standard x402 payment identifiers and explicit `payment_id=` request resume.
+- Durable payment metadata covering the selected requirement, recipient,
+  asset, atomic amount, response status, timestamps, and settlement reference.
+
+### Changed
+
+- Every HTTP 2xx response now counts as a successful paid response.
+- Post-sign transport errors and inconclusive non-2xx responses are recorded as
+  `unknown` and retain their spend reservation instead of reopening budget.
+- The configured chain is used to select the exact x402 requirement that is
+  checked, recorded, signed, and paid.
+
 ## 0.2.0 — 2026-08-08
 
 ### Added

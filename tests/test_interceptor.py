@@ -16,7 +16,7 @@ from __future__ import annotations
 import base64
 import json
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -205,6 +205,27 @@ class TestAssertOpen:
         client = PaymentClient(account=make_mock_account())
         with pytest.raises(RuntimeError, match="async context manager"):
             await client.get("https://example.com")
+
+    @pytest.mark.asyncio
+    async def test_request_passes_validated_payment_id_as_transport_metadata(self):
+        client = PaymentClient(account=make_mock_account())
+        client._client = AsyncMock()
+        client._client.request.return_value = make_mock_response(200)
+        await client.post(
+            "https://example.com/report",
+            payment_id="order_public_request_0001",
+            json={"topic": "Arc"},
+        )
+        _args, kwargs = client._client.request.await_args
+        assert kwargs["extensions"]["arc_agent_pay.payment_id"] == "order_public_request_0001"
+
+    @pytest.mark.asyncio
+    async def test_request_rejects_invalid_payment_id_before_sending(self):
+        client = PaymentClient(account=make_mock_account())
+        client._client = AsyncMock()
+        with pytest.raises(ValueError, match="payment_id"):
+            await client.get("https://example.com", payment_id="short")
+        client._client.request.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -98,8 +98,10 @@ pip install "arc-agent-pay[all]"     # every feature
 
 ```
 arc_agent_pay/                  core SDK — minimal deps
-  models.py        Service, Chain, PaymentRecord — core data types
+  models.py        Service, Chain, Payment — core data types
   budget.py        BudgetGuard — session spend enforcement
+  policy.py        PaymentPolicy — quote-aware autonomous-spending rules
+  payment_store.py atomic memory / SQLite payment lifecycle journals
   interceptor.py   PaymentClient — httpx wrapper, handles 402 → sign → retry
   registry/        service discovery
     __init__.py    ServiceRegistry — keyword/tag search (default)
@@ -141,9 +143,12 @@ The agent is **not hardcoded to any subject**. The loop is topic-agnostic; the a
 An agent that spends on its own needs guardrails, all enforced **before** any payment is signed:
 
 - **`BudgetGuard`** — hard per-session budget cap; once hit, further payments are blocked.
+- **`PaymentPolicy`** — core-client controls for maximum payment size, exact
+  rolling daily/velocity/provider caps, and host/network/asset/recipient
+  allowlists. Rolling reservations are atomic and fail closed by default.
 - **Rolling spend caps** — optional durable 24-hour total, payments-per-hour,
   and per-provider 24-hour limits across runs and restarts. A SQLite ledger is
-  created automatically when any rolling cap is configured.
+  created automatically when any rolling cap is configured on `ResearchAgent`.
 - **`ReputationGate`** (`agent/trust.py`) — with a trust policy set, the agent reads a provider's on-chain ERC-8004 reputation and refuses to pay anyone below the floor. Off by default, fail-open; strict mode via `require_provider_identity`.
 - **Allowlist / denylist** by provider agent id, and a **kill switch** (`payments_disabled`) to stop all spending instantly.
 
@@ -158,6 +163,41 @@ agent = ResearchAgent(
     provider_denylist=[999000001],    # never pay this provider
 )
 ```
+
+For direct `PaymentClient` use, configure the stronger quote-aware policy and
+durable journal explicitly:
+
+```python
+from arc_agent_pay import PaymentClient, PaymentPolicy, SqlitePaymentStore
+
+policy = PaymentPolicy(
+    max_payment_usdc="0.05",
+    daily_cap_usdc="2.00",
+    max_payments_per_hour=30,
+    provider_daily_cap_usdc="0.50",
+    allowed_hosts={"api.example.com"},
+    allowed_networks={"eip155:5042002"},
+)
+store = SqlitePaymentStore("./agent-payments.db")
+
+async with PaymentClient(
+    account=account,
+    budget_usdc="0.25",
+    policy=policy,
+    payment_store=store,
+) as client:
+    response = await client.get(
+        "https://api.example.com/report",
+        payment_id="order_research_report_0001",
+    )
+```
+
+The payment ID is included using x402's standard `payment-identifier`
+extension when the seller advertises support. Reuse it only to resume the same
+logical method, URL, body, and quoted terms. Changed terms are rejected, and a
+resume is refused when the seller did not advertise idempotency support. The
+journal records pending, authorized, successful, failed, and unknown outcomes;
+an unknown outcome keeps its reservation because settlement may have occurred.
 
 ---
 

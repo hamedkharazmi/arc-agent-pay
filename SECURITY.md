@@ -12,6 +12,12 @@ arc-agent-pay lets autonomous agents **spend money on their own**, so safety is 
 ## Spending safety
 
 - **Hard budget cap (`BudgetGuard`).** Every session has a `budget_usdc` ceiling. Each payment is checked against the remaining budget *before* it is signed; once the cap is hit, further payments are blocked ([budget.py](arc_agent_pay/budget.py)).
+- **Core payment policy (`PaymentPolicy` + `PaymentStore`).** Direct
+  `PaymentClient` users can enforce a per-payment maximum, exact prospective
+  rolling caps, and host/network/asset/recipient allowlists. SQLite reservations
+  are atomic across processes and fail closed by default; signed payments with
+  ambiguous outcomes remain reserved ([policy.py](arc_agent_pay/policy.py),
+  [payment_store.py](arc_agent_pay/payment_store.py)).
 - **Cross-run spending caps (`SpendCaps` + `SpendLedger`).** Three independent rolling-window caps survive across restarts and separate runs — `daily_cap_usdc` (24 h total), `max_payments_per_hour` (velocity brake), and `provider_daily_cap_usdc` (per-counterparty ceiling). Backed by a durable SQLite ledger (stdlib, no extra dependency); fail-open so a broken ledger never crashes a run ([spending.py](arc_agent_pay/spending.py)).
 - **Reputation-gated spending.** With a trust policy set (`min_provider_reputation`), the agent reads a provider's on-chain ERC-8004 reputation and refuses to pay anyone below the floor — before any money moves ([agent/trust.py](arc_agent_pay/agent/trust.py)). It is off by default and fail-open unless you opt into stricter identity requirements.
 - **Allowlist, denylist, kill switch.** `ResearchAgent` supports provider allowlists, provider denylists, and `payments_disabled` for stopping all paid calls instantly.

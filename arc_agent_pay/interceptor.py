@@ -1,7 +1,7 @@
 """
 interceptor.py — Layer 2 of arc-agent-pay: the x402 Payment Interceptor.
 
-PaymentClient is a drop-in replacement for httpx.AsyncClient.
+PaymentClient is a payment-aware wrapper around httpx.AsyncClient.
 Any HTTP 402 response is caught, paid via the x402 Python SDK
 (EIP-3009 + Circle Gateway), and retried — all invisible to the caller.
 Budget enforcement runs before every payment attempt.
@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import json
 import logging
 import inspect
@@ -44,8 +45,20 @@ from decimal import Decimal
 from typing import Any, Callable, Optional
 
 from .budget import BudgetGuard
-from .exceptions import InsufficientFundsError, PaymentFailedError
+from .exceptions import (
+    InsufficientFundsError,
+    PaymentFailedError,
+    PaymentPolicyError,
+    PaymentStoreError,
+    PaymentTimeoutError,
+)
 from .models import Chain, Payment, PaymentStatus
+from .payment_store import (
+    InMemoryPaymentStore,
+    SqlitePaymentStore,
+    default_payment_store_path,
+)
+from .policy import PaymentPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +119,7 @@ class _BudgetEnforcingTransport:
     """
 
     _RETRY_KEY = "_x402_is_retry"
+    _PAYMENT_ID_KEY = "arc_agent_pay.payment_id"
 
     def __init__(
         self,
@@ -145,53 +159,7 @@ class _BudgetEnforcingTransport:
 
         await response.aread()
 
-        # --- Budget enforcement ---
-        amount_usdc = self._payment_client._parse_amount_from_402(response)
-        payment: Optional[Payment] = None
-
-        if amount_usdc is not None:
-            self._emit("payment_required", {
-                "service": str(request.url),
-                "amount_usdc": amount_usdc,
-                "pay_to": self._payment_client._parse_pay_to_from_402(response),
-                "network": self._payment_client.network,
-            })
-            try:
-                self._payment_client.budget_guard.check_and_record(amount_usdc)
-            except InsufficientFundsError as exc:
-                logger.error(
-                    f"Budget exhausted — payment blocked for {request.url}. "
-                    f"Need {amount_usdc} USDC, "
-                    f"{self._payment_client.budget_guard.remaining} remaining."
-                )
-                self._emit("budget_blocked", {
-                    "service": str(request.url),
-                    "amount_usdc": amount_usdc,
-                    "budget_remaining": self._payment_client.budget_guard.remaining,
-                    "reason": str(exc),
-                })
-                raise
-
-            payment = Payment(
-                service_url=str(request.url),
-                amount_usdc=amount_usdc,
-                chain=self._payment_client.chain,
-                status=PaymentStatus.PENDING,
-            )
-            self._payment_client._payments.append(payment)
-
-            logger.info(
-                f"[arc-agent-pay] paying {amount_usdc} USDC → {request.url} "
-                f"| budget remaining: {self._payment_client.budget_guard.remaining} USDC"
-            )
-            self._emit("payment_signing", {
-                "service": str(request.url),
-                "amount_usdc": amount_usdc,
-                "scheme": "EIP-3009 TransferWithAuthorization",
-                "note": "Signing off-chain — zero gas",
-            })
-
-        # --- x402 sign + retry ---
+        # Parse the x402 terms before any signature or budget reservation.
         def _get_header(name: str) -> Optional[str]:
             return response.headers.get(name)
 
@@ -203,26 +171,115 @@ class _BudgetEnforcingTransport:
 
         try:
             payment_required = self._http_helper.get_payment_required_response(_get_header, body)
+        except Exception as exc:
+            raise PaymentFailedError(f"Failed to parse x402 payment requirements: {exc}") from exc
+
+        requested_id = request.extensions.get(self._PAYMENT_ID_KEY)
+        payment_id = self._payment_client._resolve_payment_id(requested_id)
+        payment = self._payment_client._payment_from_required(
+            request=request,
+            response=response,
+            payment_required=payment_required,
+            payment_id=payment_id,
+            request_key=signature,
+        )
+        amount_usdc = payment.amount_usdc
+
+        self._emit("payment_required", {
+            "payment_id": payment.payment_id,
+            "service": payment.service_url,
+            "amount_usdc": amount_usdc,
+            "pay_to": payment.pay_to or "",
+            "network": payment.network or self._payment_client.network,
+            "asset": payment.asset or "",
+        })
+
+        try:
+            reservation = self._payment_client._reserve_payment(payment)
+        except PaymentPolicyError as exc:
+            self._emit("policy_blocked", {
+                "payment_id": payment.payment_id,
+                "service": payment.service_url,
+                "amount_usdc": amount_usdc,
+                "reason": str(exc),
+            })
+            raise
+
+        payment = reservation.payment
+        if not reservation.is_new and not self._payment_client._supports_payment_identifier(
+            payment_required
+        ):
+            raise PaymentPolicyError(
+                f"seller does not advertise x402 payment-identifier support; "
+                f"payment {payment.payment_id} cannot be resumed safely"
+            )
+        reserved_budget = False
+        if reservation.is_new:
+            try:
+                self._payment_client.budget_guard.check_and_record(amount_usdc)
+                reserved_budget = True
+            except InsufficientFundsError as exc:
+                payment.status = PaymentStatus.SKIPPED
+                payment.error = str(exc)
+                self._payment_client._save_payment(payment)
+                self._emit("budget_blocked", {
+                    "payment_id": payment.payment_id,
+                    "service": payment.service_url,
+                    "amount_usdc": amount_usdc,
+                    "budget_remaining": self._payment_client.budget_guard.remaining,
+                    "reason": str(exc),
+                })
+                raise
+
+        self._payment_client._payments.append(payment)
+        logger.info(
+            f"[arc-agent-pay] paying {amount_usdc} USDC → {request.url} "
+            f"| payment id: {payment.payment_id} "
+            f"| budget remaining: {self._payment_client.budget_guard.remaining} USDC"
+        )
+        self._emit("payment_signing", {
+            "payment_id": payment.payment_id,
+            "service": payment.service_url,
+            "amount_usdc": amount_usdc,
+            "scheme": payment.scheme,
+            "note": "Signing off-chain — zero gas",
+        })
+
+        # --- x402 sign + retry ---
+        try:
             create_payment_payload = self._x402_client.create_payment_payload
+            payload_kwargs = self._payment_client._payment_payload_kwargs(
+                payment_required, payment.payment_id
+            )
+            if "extensions" not in inspect.signature(create_payment_payload).parameters:
+                payload_kwargs = {}
             if inspect.iscoroutinefunction(create_payment_payload):
-                payment_payload = await create_payment_payload(payment_required)
+                payment_payload = await create_payment_payload(payment_required, **payload_kwargs)
             else:
                 payment_payload = await asyncio.to_thread(
                     create_payment_payload,
                     payment_required,
+                    **payload_kwargs,
                 )
             payment_headers = self._http_helper.encode_payment_signature_header(payment_payload)
         except Exception as e:
-            if payment is not None:
-                self._payment_client.budget_guard.refund(amount_usdc)
+            if reservation.is_new:
+                if reserved_budget:
+                    self._payment_client.budget_guard.refund(amount_usdc)
                 payment.status = PaymentStatus.FAILED
                 payment.error = str(e)
-                self._emit("payment_failed", {
-                    "service": str(request.url),
-                    "amount_usdc": amount_usdc,
-                    "error": str(e),
-                })
+                self._payment_client._save_payment(payment)
+            self._emit("payment_failed", {
+                "payment_id": payment.payment_id,
+                "service": payment.service_url,
+                "amount_usdc": amount_usdc,
+                "error": str(e),
+            })
             raise PaymentFailedError(f"Failed to build x402 payment: {e}") from e
+
+        if payment.status == PaymentStatus.PENDING:
+            payment.status = PaymentStatus.AUTHORIZED
+            self._payment_client._save_payment(payment)
 
         retry_headers = dict(payment_headers)
         retry_headers["Access-Control-Expose-Headers"] = "PAYMENT-RESPONSE,X-PAYMENT-RESPONSE"
@@ -234,49 +291,87 @@ class _BudgetEnforcingTransport:
 
         # The paid retry is single-shot — never auto-retried, to avoid the risk
         # of double settlement if a response is lost after the chain tx lands.
-        retry_response = await self._transport.handle_async_request(retry_request)
+        try:
+            retry_response = await self._transport.handle_async_request(retry_request)
+        except Exception as exc:
+            if payment.status != PaymentStatus.SUCCESS:
+                payment.status = PaymentStatus.UNKNOWN
+                payment.error = f"paid request outcome is unknown: {exc}"
+                self._payment_client._save_payment(payment)
+            self._emit("payment_unknown", {
+                "payment_id": payment.payment_id,
+                "service": payment.service_url,
+                "amount_usdc": amount_usdc,
+                "error": str(exc),
+            })
+            raise PaymentTimeoutError(
+                f"Payment {payment.payment_id} may have settled; reuse this payment ID to retry safely"
+            ) from exc
 
         # --- Update this request's own Payment record (not a list search, so
         #     concurrent in-flight payments are attributed correctly) ---
-        if payment is not None:
-            if retry_response.status_code == 200:
-                payment.status = PaymentStatus.SUCCESS
-                tx_hash = PaymentClient.extract_tx_hash(retry_response.headers)
-                if tx_hash:
-                    payment.tx_reference = tx_hash
-                self._emit("payment_settled", {
-                    "service": str(request.url),
-                    "amount_usdc": amount_usdc,
-                    "tx_hash": tx_hash,
-                    "explorer_url": f"https://explorer.testnet.arc.network/tx/{tx_hash}" if tx_hash else "",
-                    "budget_remaining": self._payment_client.budget_guard.remaining,
-                    "chain": "Arc Testnet",
-                })
-                if self._payment_client._idem_ttl > 0:
-                    await retry_response.aread()
-                    self._payment_client._idem_put(
-                        signature,
-                        retry_response.status_code,
-                        retry_response.headers,
-                        retry_response.content,
-                    )
-            else:
-                reason = await self._extract_failure_reason(retry_response)
-                error = f"HTTP {retry_response.status_code} after payment"
-                if reason:
-                    error = f"{error}: {reason}"
+        payment.response_status = retry_response.status_code
+        settlement = PaymentClient.extract_payment_response(retry_response.headers)
+        tx_hash = str(settlement.get("transaction") or "")
+        is_http_success = 200 <= retry_response.status_code < 300
+        settlement_failed = settlement.get("success") is False
+        if (is_http_success and not settlement_failed) or tx_hash:
+            payment.status = PaymentStatus.SUCCESS
+            payment.error = None if is_http_success else f"settled; HTTP {retry_response.status_code}"
+            if tx_hash:
+                payment.tx_reference = tx_hash
+            self._payment_client._save_payment(payment)
+            self._emit("payment_settled", {
+                "payment_id": payment.payment_id,
+                "service": payment.service_url,
+                "amount_usdc": amount_usdc,
+                "tx_hash": tx_hash,
+                "explorer_url": f"https://explorer.testnet.arc.network/tx/{tx_hash}" if tx_hash else "",
+                "budget_remaining": self._payment_client.budget_guard.remaining,
+                "chain": payment.network or self._payment_client.network,
+            })
+            if self._payment_client._idem_ttl > 0 and is_http_success:
+                await retry_response.aread()
+                self._payment_client._idem_put(
+                    signature,
+                    retry_response.status_code,
+                    retry_response.headers,
+                    retry_response.content,
+                )
+        else:
+            reason = await self._extract_failure_reason(retry_response)
+            error = f"HTTP {retry_response.status_code} after payment"
+            if reason:
+                error = f"{error}: {reason}"
+            # A generic 4xx can come from application code after settlement.
+            # Only an explicit settlement failure or a repeated 402 proves that
+            # the authorization was rejected and its reservation can be released.
+            conclusive_rejection = retry_response.status_code == 402 or settlement_failed
+            if reservation.is_new and conclusive_rejection:
                 payment.status = PaymentStatus.FAILED
                 payment.error = error
-                self._payment_client.budget_guard.refund(amount_usdc)
+                if reserved_budget:
+                    self._payment_client.budget_guard.refund(amount_usdc)
                 logger.warning(
                     f"Payment failed for {payment.service_url} ({error}) — "
                     f"refunded {payment.amount_usdc} USDC to budget."
                 )
                 self._emit("payment_failed", {
-                    "service": str(request.url),
+                    "payment_id": payment.payment_id,
+                    "service": payment.service_url,
                     "amount_usdc": amount_usdc,
                     "error": error,
                 })
+            elif payment.status != PaymentStatus.SUCCESS:
+                payment.status = PaymentStatus.UNKNOWN
+                payment.error = error
+                self._emit("payment_unknown", {
+                    "payment_id": payment.payment_id,
+                    "service": payment.service_url,
+                    "amount_usdc": amount_usdc,
+                    "error": error,
+                })
+            self._payment_client._save_payment(payment)
 
         return retry_response
 
@@ -374,8 +469,7 @@ class PaymentClient:
     An async HTTP client that automatically handles HTTP 402 Payment Required
     responses using the x402 protocol and Circle Gateway nanopayments.
 
-    Drop-in usage — works exactly like httpx.AsyncClient for the caller.
-    All 402 responses are intercepted, paid, and retried transparently.
+    Familiar async-httpx usage with automatic 402 interception, payment, and retry.
     Budget enforcement prevents overspending across concurrent requests.
 
     Payment semantics: at-most-once. The paid retry is single-shot and is never
@@ -398,6 +492,11 @@ class PaymentClient:
         retry_backoff:   Base seconds for exponential backoff between retries.
         idempotency_ttl: Seconds to cache a successful paid response for replay
                          on identical repeat requests. 0 (default) disables it.
+        policy:          Pre-signature host/network/recipient and rolling spend policy.
+        payment_store:   PaymentStore journal. Rolling policies default to a
+                         durable SQLite store when one is not supplied.
+        asset_decimals:  Decimals used to present the selected atomic amount as
+                         ``amount_usdc``. Arc USDC defaults to 6.
     """
 
     def __init__(
@@ -412,6 +511,9 @@ class PaymentClient:
         max_retries: int = 2,
         retry_backoff: float = 0.5,
         idempotency_ttl: float = 0.0,
+        policy: Optional[PaymentPolicy] = None,
+        payment_store: Any = None,
+        asset_decimals: int = 6,
     ) -> None:
         if account is None and signer is None:
             raise ValueError("PaymentClient requires either account or signer.")
@@ -421,7 +523,24 @@ class PaymentClient:
         self.network = NETWORKS.get(chain, NETWORKS[Chain.ARC_TESTNET])
         self.base_url = base_url
         self.timeout = timeout
+        self.asset_decimals = int(asset_decimals)
+        if self.asset_decimals < 0:
+            raise ValueError("asset_decimals must be non-negative")
         self.budget_guard = BudgetGuard(budget_usdc)
+        self.policy = policy or PaymentPolicy()
+        if payment_store is not None:
+            self.payment_store = payment_store
+        elif self.policy.has_rolling_limits:
+            try:
+                self.payment_store = SqlitePaymentStore(default_payment_store_path())
+            except Exception as exc:
+                if self.policy.fail_closed:
+                    raise PaymentStoreError(f"could not initialize payment journal: {exc}") from exc
+                logger.warning("could not initialize durable payment journal; using process memory")
+                self.payment_store = InMemoryPaymentStore()
+        else:
+            self.payment_store = InMemoryPaymentStore()
+        self._fallback_payment_store = InMemoryPaymentStore()
         self._payments: list[Payment] = []
         self._client: Any = None   # httpx.AsyncClient, set in __aenter__
         self.__on_event = on_event
@@ -472,6 +591,162 @@ class PaymentClient:
         )
 
     # ------------------------------------------------------------------
+    # Policy, journal, and protocol identity
+    # ------------------------------------------------------------------
+
+    def _reserve_payment(self, payment: Payment) -> Any:
+        try:
+            return self.payment_store.reserve(payment, self.policy)
+        except PaymentPolicyError:
+            raise
+        except PaymentStoreError:
+            if self.policy.fail_closed:
+                raise
+            logger.warning("payment journal unavailable; falling back to process memory")
+            return self._fallback_payment_store.reserve(payment, self.policy)
+
+    def _save_payment(self, payment: Payment) -> None:
+        try:
+            stored = self.payment_store.update(payment)
+            payment.updated_at = stored.updated_at
+        except PaymentStoreError:
+            if self.policy.fail_closed:
+                raise
+            logger.warning("payment journal update failed; retaining a process-local record")
+            existing = self._fallback_payment_store.get(payment.payment_id or "")
+            if existing is None:
+                self._fallback_payment_store.reserve(payment, PaymentPolicy())
+            stored = self._fallback_payment_store.update(payment)
+            payment.updated_at = stored.updated_at
+
+    @staticmethod
+    def _resolve_payment_id(requested: Any = None) -> str:
+        from x402.extensions.payment_identifier import generate_payment_id, is_valid_payment_id
+
+        payment_id = str(requested).strip() if requested is not None else generate_payment_id()
+        if not is_valid_payment_id(payment_id):
+            raise ValueError(
+                "payment_id must be 16-128 characters containing only letters, numbers, '-' or '_'"
+            )
+        return payment_id
+
+    @staticmethod
+    def _requirement_value(requirement: Any, *names: str) -> Any:
+        for name in names:
+            if isinstance(requirement, dict) and name in requirement:
+                return requirement[name]
+            if hasattr(requirement, name):
+                return getattr(requirement, name)
+        return None
+
+    def _select_x402_requirement(self, _version: int, requirements: list[Any]) -> Any:
+        """Choose a requirement on the client's configured chain.
+
+        The same selector is supplied to upstream x402 and called locally before
+        signing, so policy accounting always describes the authorization that is
+        actually created.
+        """
+        if not requirements:
+            raise PaymentFailedError("402 response did not include payment requirements")
+
+        network_matches = [
+            req for req in requirements
+            if self._requirement_value(req, "network") == self.network
+        ]
+        if network_matches:
+            candidates = network_matches
+        else:
+            declared = [self._requirement_value(req, "network") for req in requirements]
+            if any(declared):
+                raise PaymentFailedError(
+                    f"service does not accept payments on configured network {self.network}"
+                )
+            candidates = list(requirements)  # compatibility with incomplete v1/test fixtures
+
+        exact = [
+            req for req in candidates
+            if self._requirement_value(req, "scheme") in (None, "exact")
+        ]
+        return (exact or candidates)[0]
+
+    def _payment_from_required(
+        self,
+        *,
+        request: Any,
+        response: Any,
+        payment_required: Any,
+        payment_id: str,
+        request_key: str,
+    ) -> Payment:
+        accepts = self._requirement_value(payment_required, "accepts") or []
+        selected = self._select_x402_requirement(2, list(accepts)) if accepts else None
+
+        raw_amount = None
+        if selected is not None:
+            getter = getattr(selected, "get_amount", None)
+            raw_amount = getter() if callable(getter) else self._requirement_value(
+                selected, "amount", "max_amount_required", "maxAmountRequired"
+            )
+        if raw_amount is None:
+            amount_usdc = self._parse_amount_from_402(response)
+            if amount_usdc is None:
+                raise PaymentFailedError("402 response did not include a valid payment amount")
+            raw_amount = str(Decimal(amount_usdc) * (Decimal(10) ** self.asset_decimals))
+        else:
+            try:
+                amount_usdc = str(
+                    Decimal(str(raw_amount)) / (Decimal(10) ** self.asset_decimals)
+                )
+            except Exception as exc:
+                raise PaymentFailedError(f"invalid atomic payment amount {raw_amount!r}") from exc
+
+        def value(*names: str) -> Any:
+            return self._requirement_value(selected, *names) if selected else None
+
+        return Payment(
+            payment_id=payment_id,
+            request_key=request_key,
+            method=request.method,
+            service_url=str(request.url),
+            amount_usdc=amount_usdc,
+            amount_atomic=str(raw_amount),
+            chain=self.chain,
+            status=PaymentStatus.PENDING,
+            scheme=str(value("scheme") or "exact"),
+            network=str(value("network") or self.network),
+            asset=value("asset"),
+            pay_to=value("pay_to", "payTo", "pay_to_address", "payToAddress")
+            or self._parse_pay_to_from_402(response)
+            or None,
+        )
+
+    @staticmethod
+    def _payment_payload_kwargs(payment_required: Any, payment_id: str) -> dict[str, Any]:
+        """Return x402 v2 extension kwargs carrying the standard payment ID."""
+        version = PaymentClient._requirement_value(
+            payment_required, "x402_version", "x402Version"
+        )
+        if version not in (None, 2):
+            return {}
+        declared = PaymentClient._requirement_value(payment_required, "extensions")
+        if not declared:
+            return {}
+        extensions = copy.deepcopy(declared)
+        from x402.extensions.payment_identifier import append_payment_identifier_to_extensions
+
+        append_payment_identifier_to_extensions(extensions, payment_id)
+        return {"extensions": extensions}
+
+    @staticmethod
+    def _supports_payment_identifier(payment_required: Any) -> bool:
+        declared = PaymentClient._requirement_value(payment_required, "extensions") or {}
+        if not isinstance(declared, dict):
+            return False
+        from x402.extensions.payment_identifier import is_payment_identifier_extension
+
+        return is_payment_identifier_extension(declared.get("payment-identifier"))
+
+    # ------------------------------------------------------------------
     # Context manager — builds the httpx client with x402 transport
     # ------------------------------------------------------------------
 
@@ -490,7 +765,10 @@ class PaymentClient:
         # Delegate-signing flows may provide a custom signer that blocks while
         # waiting for an out-of-process signature; use the sync client in that
         # path and execute payload creation in a worker thread.
-        x402_client = x402ClientSync() if self.signer is not None else x402Client()
+        x402_client_cls = x402ClientSync if self.signer is not None else x402Client
+        x402_client = x402_client_cls(
+            payment_requirements_selector=self._select_x402_requirement
+        )
         resolved_signer = self.signer or EthAccountSigner(self.account)
         register_exact_evm_client(x402_client, resolved_signer)
 
@@ -588,6 +866,18 @@ class PaymentClient:
             return None
 
     @staticmethod
+    def extract_payment_response(headers: Any) -> dict[str, Any]:
+        """Decode the x402 settlement response header, returning ``{}`` on absence/error."""
+        raw = headers.get("PAYMENT-RESPONSE") or headers.get("X-PAYMENT-RESPONSE", "")
+        if not raw:
+            return {}
+        try:
+            value = json.loads(base64.b64decode(raw + "==").decode())
+            return value if isinstance(value, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
     def extract_tx_hash(headers: Any) -> str:
         """
         Pull the settlement tx hash from a paid 200 response.
@@ -596,14 +886,7 @@ class PaymentClient:
         "transaction" field); v1/compat servers use X-PAYMENT-RESPONSE. Returns
         "" if absent or unparseable.
         """
-        raw = headers.get("PAYMENT-RESPONSE") or headers.get("X-PAYMENT-RESPONSE", "")
-        if not raw:
-            return ""
-        try:
-            data = json.loads(base64.b64decode(raw + "==").decode())
-            return data.get("transaction", "")
-        except Exception:
-            return ""
+        return str(PaymentClient.extract_payment_response(headers).get("transaction") or "")
 
     # ------------------------------------------------------------------
     # HTTP methods (delegate to httpx client)
@@ -617,33 +900,45 @@ class PaymentClient:
                 "      response = await client.get(url)"
             )
 
-    async def get(self, url: str, **kwargs) -> Any:
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        payment_id: Optional[str] = None,
+        **kwargs,
+    ) -> Any:
+        """Send an HTTP request, optionally resuming a logical x402 payment ID."""
         self._assert_open()
-        return await self._client.get(url, **kwargs)
+        extensions = dict(kwargs.pop("extensions", {}) or {})
+        if payment_id is not None:
+            # Validate before sending the free probe request, so a malformed ID
+            # cannot produce a side effect before the caller sees the error.
+            extensions[_BudgetEnforcingTransport._PAYMENT_ID_KEY] = self._resolve_payment_id(
+                payment_id
+            )
+        return await self._client.request(method, url, extensions=extensions, **kwargs)
+
+    async def get(self, url: str, **kwargs) -> Any:
+        return await self.request("GET", url, **kwargs)
 
     async def post(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.post(url, **kwargs)
+        return await self.request("POST", url, **kwargs)
 
     async def put(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.put(url, **kwargs)
+        return await self.request("PUT", url, **kwargs)
 
     async def delete(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.delete(url, **kwargs)
+        return await self.request("DELETE", url, **kwargs)
 
     async def patch(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.patch(url, **kwargs)
+        return await self.request("PATCH", url, **kwargs)
 
     async def head(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.head(url, **kwargs)
+        return await self.request("HEAD", url, **kwargs)
 
     async def options(self, url: str, **kwargs) -> Any:
-        self._assert_open()
-        return await self._client.options(url, **kwargs)
+        return await self.request("OPTIONS", url, **kwargs)
 
     # ------------------------------------------------------------------
     # Session inspection

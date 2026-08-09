@@ -25,6 +25,13 @@ Quick start
 from .budget import BudgetGuard
 from .interceptor import PaymentClient
 from .models import Chain, Wallet, Service, Payment, Budget, PaymentRequest
+from .payment_store import (
+    InMemoryPaymentStore,
+    PaymentStore,
+    SqlitePaymentStore,
+    default_payment_store_path,
+)
+from .policy import PaymentPolicy
 from .registry import Discovery, SemanticServiceRegistry, ServiceRegistry
 from .spending import InMemorySpendLedger, SpendCaps, SqliteSpendLedger
 from .workflow import (
@@ -54,6 +61,8 @@ from .exceptions import (
     PaymentFailedError,
     PaymentTimeoutError,
     InvalidPaymentRequestError,
+    PaymentPolicyError,
+    PaymentStoreError,
     ServiceNotFoundError,
     ServiceRegistrationError,
     WorkflowError,
@@ -70,6 +79,11 @@ __all__ = [
     "SemanticServiceRegistry",
     "Discovery",
     "BudgetGuard",
+    "PaymentPolicy",
+    "PaymentStore",
+    "InMemoryPaymentStore",
+    "SqlitePaymentStore",
+    "default_payment_store_path",
     # Spending caps
     "SpendCaps",
     "InMemorySpendLedger",
@@ -107,6 +121,8 @@ __all__ = [
     "PaymentFailedError",
     "PaymentTimeoutError",
     "InvalidPaymentRequestError",
+    "PaymentPolicyError",
+    "PaymentStoreError",
     "ServiceNotFoundError",
     "ServiceRegistrationError",
     "WorkflowError",

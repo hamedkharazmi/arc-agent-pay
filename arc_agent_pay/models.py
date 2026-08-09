@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum
+import time
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -31,9 +32,11 @@ class WalletType(str, Enum):
 
 class PaymentStatus(str, Enum):
     PENDING   = "pending"
+    AUTHORIZED = "authorized"  # payment payload signed; paid request not resolved yet
     SUCCESS   = "success"
     FAILED    = "failed"
     SKIPPED   = "skipped"   # budget guard blocked it
+    UNKNOWN   = "unknown"   # signed/submitted, but settlement outcome is ambiguous
 
 
 # ---------------------------------------------------------------------------
@@ -86,13 +89,29 @@ class Service(BaseModel):
 # ---------------------------------------------------------------------------
 
 class Payment(BaseModel):
-    """Record of a single nanopayment made by the interceptor."""
+    """Record of a nanopayment made by the interceptor.
+
+    The original five fields remain required/compatible.  The optional protocol
+    fields make the same model useful as a durable audit record without forcing
+    existing callers to migrate.
+    """
     service_url: str
     amount_usdc: str
     chain: Chain
     status: PaymentStatus = PaymentStatus.PENDING
     tx_reference: Optional[str] = None   # gateway reference / tx hash
     error: Optional[str] = None
+    payment_id: Optional[str] = None
+    request_key: Optional[str] = None
+    method: str = "GET"
+    scheme: str = "exact"
+    network: Optional[str] = None
+    asset: Optional[str] = None
+    pay_to: Optional[str] = None
+    amount_atomic: Optional[str] = None
+    response_status: Optional[int] = None
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
 
 
 # ---------------------------------------------------------------------------
