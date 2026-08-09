@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2.7",
-    "x402[evm,httpx]>=2.6",
+    "x402[evm,httpx]>=2.15",
     "eth-account>=0.13",
 ]
 

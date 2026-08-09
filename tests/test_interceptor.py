@@ -18,11 +18,13 @@ import json
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from x402.schemas.v1 import PaymentRequiredV1, PaymentRequirementsV1
 
 from arc_agent_pay.interceptor import PaymentClient
 from arc_agent_pay.models import Chain, PaymentStatus
-from arc_agent_pay.exceptions import InsufficientFundsError
+from arc_agent_pay.exceptions import InsufficientFundsError, PaymentFailedError
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +152,56 @@ class TestParseAmountFrom402:
         )
         amount = client._parse_amount_from_402(response)
         assert Decimal(amount) == Decimal("0.000001")
+
+
+class TestRequirementSelection:
+    def test_v1_base_uses_legacy_network_name_and_records_selected_terms(self):
+        client = PaymentClient(
+            account=make_mock_account(), budget_usdc="5.00", chain=Chain.BASE
+        )
+        base_sepolia = PaymentRequirementsV1(
+            scheme="exact",
+            network="base-sepolia",
+            max_amount_required="20000",
+            resource="https://api.example.com/data",
+            pay_to="0x" + "c" * 40,
+            max_timeout_seconds=60,
+            asset="0x" + "d" * 40,
+        )
+        base = base_sepolia.model_copy(
+            update={"network": "base", "max_amount_required": "10000"}
+        )
+        required = PaymentRequiredV1(accepts=[base_sepolia, base])
+        request = httpx.Request("GET", "https://api.example.com/data")
+
+        record = client._payment_from_required(
+            request=request,
+            response=make_mock_response(402),
+            payment_required=required,
+            payment_id="pay_v1_base_selection_01",
+            request_key="request-key",
+        )
+
+        assert record.network == "base"
+        assert record.amount_atomic == "10000"
+        assert record.amount_usdc == "0.01"
+        assert record.pay_to == base.pay_to
+
+    def test_v1_arc_is_rejected_before_signing(self):
+        client = PaymentClient(
+            account=make_mock_account(), budget_usdc="5.00", chain=Chain.ARC_TESTNET
+        )
+        requirement = PaymentRequirementsV1(
+            scheme="exact",
+            network="base",
+            max_amount_required="10000",
+            resource="https://api.example.com/data",
+            pay_to="0x" + "c" * 40,
+            max_timeout_seconds=60,
+            asset="0x" + "d" * 40,
+        )
+        with pytest.raises(PaymentFailedError, match="v1 is not supported"):
+            client._select_x402_requirement(1, [requirement])
 
 
 # ---------------------------------------------------------------------------

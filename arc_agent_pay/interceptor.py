@@ -44,6 +44,13 @@ import inspect
 from decimal import Decimal
 from typing import Any, Callable, Optional
 
+from ._payment_identifier import (
+    PAYMENT_IDENTIFIER,
+    append_payment_identifier_to_extensions,
+    generate_payment_id,
+    is_payment_identifier_extension,
+    is_valid_payment_id,
+)
 from .budget import BudgetGuard
 from .exceptions import (
     InsufficientFundsError,
@@ -94,6 +101,13 @@ def _register_arc_testnet() -> None:
 _register_arc_testnet()
 
 NETWORKS_REVERSE = {v: k for k, v in NETWORKS.items()}
+
+# x402 v1 used names rather than CAIP-2 identifiers. Arc and Ethereum use the
+# v2 path; retain legacy compatibility for the Base networks registered upstream.
+LEGACY_NETWORKS = {
+    Chain.BASE_SEPOLIA: "base-sepolia",
+    Chain.BASE: "base",
+}
 
 # Arc Testnet RPC endpoint
 ARC_TESTNET_RPC = "https://rpc.testnet.arc.network"
@@ -305,7 +319,8 @@ class _BudgetEnforcingTransport:
                 "error": str(exc),
             })
             raise PaymentTimeoutError(
-                f"Payment {payment.payment_id} may have settled; reuse this payment ID to retry safely"
+                f"Payment {payment.payment_id} may have settled; reuse this payment ID to retry safely",
+                payment_id=payment.payment_id,
             ) from exc
 
         # --- Update this request's own Payment record (not a list search, so
@@ -621,8 +636,6 @@ class PaymentClient:
 
     @staticmethod
     def _resolve_payment_id(requested: Any = None) -> str:
-        from x402.extensions.payment_identifier import generate_payment_id, is_valid_payment_id
-
         payment_id = str(requested).strip() if requested is not None else generate_payment_id()
         if not is_valid_payment_id(payment_id):
             raise ValueError(
@@ -639,7 +652,7 @@ class PaymentClient:
                 return getattr(requirement, name)
         return None
 
-    def _select_x402_requirement(self, _version: int, requirements: list[Any]) -> Any:
+    def _select_x402_requirement(self, version: int, requirements: list[Any]) -> Any:
         """Choose a requirement on the client's configured chain.
 
         The same selector is supplied to upstream x402 and called locally before
@@ -649,9 +662,15 @@ class PaymentClient:
         if not requirements:
             raise PaymentFailedError("402 response did not include payment requirements")
 
+        expected_network = self.network if version != 1 else LEGACY_NETWORKS.get(self.chain)
+        if expected_network is None:
+            raise PaymentFailedError(
+                f"x402 v1 is not supported on configured chain {self.chain.value}; use x402 v2"
+            )
+
         network_matches = [
             req for req in requirements
-            if self._requirement_value(req, "network") == self.network
+            if self._requirement_value(req, "network") == expected_network
         ]
         if network_matches:
             candidates = network_matches
@@ -659,7 +678,7 @@ class PaymentClient:
             declared = [self._requirement_value(req, "network") for req in requirements]
             if any(declared):
                 raise PaymentFailedError(
-                    f"service does not accept payments on configured network {self.network}"
+                    f"service does not accept payments on configured network {expected_network}"
                 )
             candidates = list(requirements)  # compatibility with incomplete v1/test fixtures
 
@@ -679,7 +698,12 @@ class PaymentClient:
         request_key: str,
     ) -> Payment:
         accepts = self._requirement_value(payment_required, "accepts") or []
-        selected = self._select_x402_requirement(2, list(accepts)) if accepts else None
+        raw_version = self._requirement_value(payment_required, "x402_version", "x402Version")
+        try:
+            version = int(raw_version) if raw_version is not None else 2
+        except (TypeError, ValueError):
+            version = 2
+        selected = self._select_x402_requirement(version, list(accepts)) if accepts else None
 
         raw_amount = None
         if selected is not None:
@@ -732,8 +756,6 @@ class PaymentClient:
         if not declared:
             return {}
         extensions = copy.deepcopy(declared)
-        from x402.extensions.payment_identifier import append_payment_identifier_to_extensions
-
         append_payment_identifier_to_extensions(extensions, payment_id)
         return {"extensions": extensions}
 
@@ -742,9 +764,7 @@ class PaymentClient:
         declared = PaymentClient._requirement_value(payment_required, "extensions") or {}
         if not isinstance(declared, dict):
             return False
-        from x402.extensions.payment_identifier import is_payment_identifier_extension
-
-        return is_payment_identifier_extension(declared.get("payment-identifier"))
+        return is_payment_identifier_extension(declared.get(PAYMENT_IDENTIFIER))
 
     # ------------------------------------------------------------------
     # Context manager — builds the httpx client with x402 transport

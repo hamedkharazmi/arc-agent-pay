@@ -268,7 +268,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "web3", marker = "extra == 'all'", specifier = ">=7.0" },
     { name = "web3", marker = "extra == 'onchain'", specifier = ">=7.0" },
-    { name = "x402", extras = ["evm", "httpx"], specifier = ">=2.6" },
+    { name = "x402", extras = ["evm", "httpx"], specifier = ">=2.15" },
 ]
 provides-extras = ["llm", "rag", "onchain", "observability", "mcp", "agent", "all"]
 
@@ -455,16 +455,16 @@ wheels = [
 
 [[package]]
 name = "build"
-version = "1.5.1"
+version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "os_name == 'nt'" },
     { name = "packaging" },
     { name = "pyproject-hooks" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/21/6ec54248b4d0d51f12f3ca4aa77a128077d747a5db86cb5a2fcd9aedecbd/build-1.5.1.tar.gz", hash = "sha256:94e17f1db803ab22f46049376c44c8437c52090f0dfdf1adc43df56542d644fb", size = 112439, upload-time = "2026-07-09T06:21:59.632Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/e0/df5e171f685f82f37b12e1f208064e24244911079d7b767447d1af7e0d70/build-1.5.0.tar.gz", hash = "sha256:302c22c3ba2a0fd5f3911918651341ebb3896176cbdec15bd421f80b1afc7647", size = 89796, upload-time = "2026-04-30T03:18:25.17Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/f7/2c3f99ff9282f1c1ec9f6298f2c03034658a0901eeacb3b3501cb488574c/build-1.5.1-py3-none-any.whl", hash = "sha256:f1a58fe2e5af5b0238a07b9e70207492c79ddebbdb1ad954fc86d62a56be3e0d", size = 31195, upload-time = "2026-07-09T06:21:58.551Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/fe/6bea5c9162869c5beba5d9c8abbed835ec85bf1ec1fba05a3822325c45f3/build-1.5.0-py3-none-any.whl", hash = "sha256:13f3eecb844759ab66efec90ca17639bbf14dc06cb2fdf37a9010322d9c50a6f", size = 26018, upload-time = "2026-04-30T03:18:23.644Z" },
 ]
 
 [[package]]
@@ -4602,16 +4602,16 @@ wheels = [
 
 [[package]]
 name = "x402"
-version = "2.15.0"
+version = "2.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nest-asyncio" },
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/29/2690ab4201f441dc433d945f87528e98f885c1469c965fbd0f15dc801033/x402-2.15.0.tar.gz", hash = "sha256:25579a7fcf2bd00ce56e47de052d4460d5a83621a12170fcf1d863066b3ec71a", size = 2091443, upload-time = "2026-07-10T17:31:44.497Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/8a/756c978d1c507ed6b65105affc630e31b7b6fe5783f60fc8d433554f20d8/x402-2.18.0.tar.gz", hash = "sha256:fb30d8de45c8add3a28109c38527843cd7038c9c4c764e761455fd58ccf58aa9", size = 2100275, upload-time = "2026-08-04T18:48:18.807Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/cb/9889637c27e89e14b9cc21e3633e3d3bbaf7930d3e85b1ee776e17f28e4f/x402-2.15.0-py3-none-any.whl", hash = "sha256:06f59422d5ca30736964ce911980fe3288ed72ab90b14789a42738fd5e99b794", size = 2223741, upload-time = "2026-07-10T17:31:42.823Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/ba/1160d9b83d4fdc105dfa0972953845710d30a36f3773c6f7acec4dea7a02/x402-2.18.0-py3-none-any.whl", hash = "sha256:11c337ae202811916af0e241ee2510803bfd2a4da906f7373f2a6ad6a983219e", size = 2233019, upload-time = "2026-08-04T18:48:16.876Z" },
 ]
 
 [package.optional-dependencies]

@@ -58,7 +58,11 @@ class PaymentFailedError(ArcAgentPayError):
 
 
 class PaymentTimeoutError(ArcAgentPayError):
-    """Payment authorization request timed out."""
+    """A paid request ended without a conclusive settlement response."""
+
+    def __init__(self, message: str, *, payment_id: str | None = None):
+        self.payment_id = payment_id
+        super().__init__(message)
 
 
 class InvalidPaymentRequestError(ArcAgentPayError):

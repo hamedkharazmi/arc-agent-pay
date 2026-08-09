@@ -257,9 +257,10 @@ class _PaidTimeoutUnderlying(FakeUnderlying):
 async def test_paid_transport_failure_is_unknown_and_exposes_resume_id():
     client = _client()
     transport = _build_transport(client, _PaidTimeoutUnderlying({"/a": "10000"}))
-    with pytest.raises(PaymentTimeoutError, match="reuse this payment ID"):
+    with pytest.raises(PaymentTimeoutError, match="reuse this payment ID") as exc_info:
         await transport.handle_async_request(httpx.Request("GET", "https://x/a"))
     record = client.payments[0]
+    assert exc_info.value.payment_id == record.payment_id
     assert record.status == PaymentStatus.UNKNOWN
     assert record.payment_id
     assert client.payment_store.get(record.payment_id).status == PaymentStatus.UNKNOWN
@@ -276,8 +277,6 @@ class _PaymentIdX402Client:
 
 class _PaymentIdHelper(_FakeHelper):
     def get_payment_required_response(self, _getter, _body):
-        from x402.extensions.payment_identifier import declare_payment_identifier_extension
-
         return {
             "x402Version": 2,
             "accepts": [{
@@ -288,7 +287,10 @@ class _PaymentIdHelper(_FakeHelper):
                 "payTo": "0x" + "b" * 40,
             }],
             "extensions": {
-                "payment-identifier": declare_payment_identifier_extension(required=False)
+                "payment-identifier": {
+                    "info": {"required": False},
+                    "schema": {"type": "object"},
+                }
             },
         }
 
