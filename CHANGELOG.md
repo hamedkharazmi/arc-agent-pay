@@ -27,6 +27,17 @@ All notable changes to `arc-agent-pay` are documented here.
 - Payment-identifier wire handling no longer imports x402's unrelated optional
   extension dependencies.
 
+## 0.3.0 — 2026-08-09
+
+### Added
+
+- `Erc8183Client` bindings for the pinned ERC-8183 draft reference lifecycle:
+  create, set budget, fund, submit, complete, reject, and claim refund.
+- Packaged reference ABIs, partner-neutral job models, and executable local-EVM
+  state-machine tests for the draft profile.
+- Compatibility notes documenting the exact reference revision and the known
+  differences between its prose and published contract.
+
 ## 0.2.0 — 2026-08-08
 
 ### Added
