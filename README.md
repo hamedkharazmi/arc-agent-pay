@@ -141,6 +141,9 @@ The agent is **not hardcoded to any subject**. The loop is topic-agnostic; the a
 An agent that spends on its own needs guardrails, all enforced **before** any payment is signed:
 
 - **`BudgetGuard`** — hard per-session budget cap; once hit, further payments are blocked.
+- **Rolling spend caps** — optional durable 24-hour total, payments-per-hour,
+  and per-provider 24-hour limits across runs and restarts. A SQLite ledger is
+  created automatically when any rolling cap is configured.
 - **`ReputationGate`** (`agent/trust.py`) — with a trust policy set, the agent reads a provider's on-chain ERC-8004 reputation and refuses to pay anyone below the floor. Off by default, fail-open; strict mode via `require_provider_identity`.
 - **Allowlist / denylist** by provider agent id, and a **kill switch** (`payments_disabled`) to stop all spending instantly.
 
@@ -148,6 +151,9 @@ An agent that spends on its own needs guardrails, all enforced **before** any pa
 agent = ResearchAgent(
     private_key=key,
     budget_usdc="0.10",
+    daily_cap_usdc="2.00",             # rolling 24-hour total
+    max_payments_per_hour=30,           # runaway-loop velocity brake
+    provider_daily_cap_usdc="0.50",    # rolling cap per counterparty
     min_provider_reputation=3.0,      # refuse providers rated below 3.0
     provider_denylist=[999000001],    # never pay this provider
 )
