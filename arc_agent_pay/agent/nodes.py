@@ -75,7 +75,14 @@ def make_synthesizer(
         body = await synthesize_report(topic, collected, resolved)
         report = body + footer
         if on_event:
-            payload: dict[str, Any] = {"markdown": report, "provider": provider_name}
+            completed_provider = getattr(resolved, "last_provider", provider_name)
+            payload: dict[str, Any] = {
+                "markdown": report,
+                "provider": completed_provider,
+            }
+            fallback = getattr(resolved, "last_fallback", None)
+            if fallback:
+                payload["fallback"] = fallback
             # Surface on-chain packet quota when synthesis ran via arcapis.
             packet = getattr(resolved, "last_call", None)
             if packet:

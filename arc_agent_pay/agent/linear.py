@@ -195,7 +195,11 @@ async def run_linear(
     body = await synthesize_report(topic, state.fetched_data, resolved)
     state.report = body + report_footer(state.payment_summary)
     if on_event:
-        payload = {"markdown": state.report, "provider": provider_name}
+        completed_provider = getattr(resolved, "last_provider", provider_name)
+        payload = {"markdown": state.report, "provider": completed_provider}
+        fallback = getattr(resolved, "last_fallback", None)
+        if fallback:
+            payload["fallback"] = fallback
         packet = getattr(resolved, "last_call", None)
         if packet:
             payload["packet"] = packet

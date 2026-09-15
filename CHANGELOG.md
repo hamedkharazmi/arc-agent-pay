@@ -2,6 +2,15 @@
 
 All notable changes to `arc-agent-pay` are documented here.
 
+## Unreleased
+
+### Changed
+
+- ArcAPIs synthesis falls back to OpenAI on transient gateway or transport
+  failures when `OPENAI_API_KEY` is configured, while preserving ArcAPIs as the
+  primary provider and surfacing the gateway's detailed error when no fallback
+  is available.
+
 ## 0.4.0 — 2026-08-09
 
 ### Added

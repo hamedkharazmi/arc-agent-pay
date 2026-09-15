@@ -87,8 +87,14 @@ class ArcAPIsProvider:
         # Quota metadata from the most recent call (for UI/telemetry). Populated
         # by complete(); None until the first successful call.
         self.last_call: Optional[dict[str, Any]] = None
+        # synthesize_report() updates these when a configured OpenAI provider
+        # takes over after a transient ArcAPIs failure.
+        self.last_provider = self.name
+        self.last_fallback: Optional[dict[str, Any]] = None
 
     async def complete(self, prompt: str, **opts) -> str:
+        self.last_provider = self.name
+        self.last_fallback = None
         if not self.packet_id:
             raise ValueError("ArcAPIsProvider requires ARCAPIS_TOKEN_ID (e.g. pk_24).")
         if not self.signer_key:
@@ -146,7 +152,30 @@ class ArcAPIsProvider:
                 },
                 content=body_string,  # raw bytes — must equal what we hashed
             )
-            r.raise_for_status()
+            if not r.is_success:
+                # httpx's default exception omits the gateway's JSON response,
+                # which often contains the actionable cause and refund status.
+                try:
+                    error_data = r.json()
+                except (ValueError, TypeError):
+                    error_data = None
+
+                if isinstance(error_data, dict):
+                    error_code = error_data.get("error")
+                    message = error_data.get("message")
+                    retry_after = error_data.get("retryAfter")
+                    details = " ".join(
+                        str(value) for value in (error_code, message) if value
+                    )
+                    if retry_after is not None:
+                        details += f" Retry after {retry_after}s."
+                    if details:
+                        raise httpx.HTTPStatusError(
+                            f"ArcAPIs request failed ({r.status_code}): {details}",
+                            request=r.request,
+                            response=r,
+                        )
+                r.raise_for_status()
             data = r.json()
 
         # Capture packet quota so callers can surface it (UI, logs).

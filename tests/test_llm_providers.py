@@ -121,6 +121,30 @@ async def test_arcapis_requires_signer_key(monkeypatch):
         await provider.complete("x")
 
 
+@respx.mock
+async def test_arcapis_error_includes_gateway_details():
+    respx.post("https://arcapis.com/api/call/24").mock(
+        return_value=httpx.Response(
+            503,
+            json={
+                "error": "upstream_rate_limited",
+                "retryAfter": 60,
+                "message": "Upstream rate-limited. Your call was refunded.",
+            },
+        )
+    )
+    provider = ArcAPIsProvider(
+        token_id="pk_24",
+        signer_key="0x" + "11" * 32,
+    )
+
+    with pytest.raises(
+        httpx.HTTPStatusError,
+        match=r"upstream_rate_limited.*refunded.*Retry after 60s",
+    ):
+        await provider.complete("say hi")
+
+
 # ---------------------------------------------------------------------------
 # OpenAIProvider.complete (mock the openai client)
 # ---------------------------------------------------------------------------
@@ -175,3 +199,63 @@ async def test_synthesize_report_uses_provider():
 
     report = await synthesize_report("topic", {"svc": {"x": 1}}, provider=_StubProvider())
     assert report == "stub synthesized report"
+
+
+@respx.mock
+async def test_synthesize_report_falls_back_to_openai_when_arcapis_is_unavailable(
+    monkeypatch,
+):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    respx.post("https://arcapis.com/api/call/24").mock(
+        return_value=httpx.Response(
+            503,
+            json={
+                "error": "upstream_rate_limited",
+                "retryAfter": 60,
+                "message": "Upstream rate-limited. Your call was refunded.",
+            },
+        )
+    )
+    fallback_prompts = []
+
+    async def _openai_complete(self, prompt: str, **opts):
+        fallback_prompts.append(prompt)
+        return "openai fallback report"
+
+    monkeypatch.setattr(OpenAIProvider, "complete", _openai_complete)
+    provider = ArcAPIsProvider(
+        token_id="pk_24",
+        signer_key="0x" + "11" * 32,
+    )
+
+    report = await synthesize_report("topic", {"svc": {"x": 1}}, provider=provider)
+
+    assert report == "openai fallback report"
+    assert fallback_prompts
+    assert provider.last_provider == "openai"
+    assert provider.last_fallback == {
+        "from": "arcapis",
+        "to": "openai",
+        "reason": "upstream_rate_limited",
+    }
+
+
+@respx.mock
+async def test_synthesize_report_does_not_hide_arcapis_auth_errors(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    respx.post("https://arcapis.com/api/call/24").mock(
+        return_value=httpx.Response(
+            403,
+            json={"error": "not_packet_owner", "message": "Signer does not own packet."},
+        )
+    )
+    provider = ArcAPIsProvider(
+        token_id="pk_24",
+        signer_key="0x" + "11" * 32,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError, match="not_packet_owner"):
+        await synthesize_report("topic", {"svc": {"x": 1}}, provider=provider)
+
+    assert provider.last_provider == "arcapis"
+    assert provider.last_fallback is None

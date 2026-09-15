@@ -19,6 +19,8 @@ import logging
 import os
 from typing import Any, Optional
 
+import httpx
+
 from .arcapis_provider import ArcAPIsProvider
 from .base import LLMProvider
 from .openai_provider import OpenAIProvider
@@ -26,6 +28,8 @@ from .prompts import build_research_prompt
 from .template import template_report
 
 logger = logging.getLogger(__name__)
+
+_TRANSIENT_ARCAPIS_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 __all__ = [
     "LLMProvider",
@@ -71,4 +75,49 @@ async def synthesize_report(
 
     prompt = build_research_prompt(topic, fetched_data)
     logger.info("[llm] Synthesizing report with provider=%s", provider.name)
-    return await provider.complete(prompt)
+    try:
+        return await provider.complete(prompt)
+    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+        if not _should_fallback_to_openai(provider, exc):
+            raise
+
+        reason = _arcapis_failure_reason(exc)
+        logger.warning(
+            "[llm] ArcAPIs unavailable (%s) — falling back to OpenAI",
+            reason,
+        )
+        fallback = OpenAIProvider()
+        result = await fallback.complete(prompt)
+        # Preserve the primary provider object for backwards compatibility while
+        # letting agent events report which provider actually produced the text.
+        provider.last_provider = fallback.name
+        provider.last_fallback = {
+            "from": provider.name,
+            "to": fallback.name,
+            "reason": reason,
+        }
+        return result
+
+
+def _should_fallback_to_openai(
+    provider: LLMProvider,
+    exc: httpx.HTTPStatusError | httpx.RequestError,
+) -> bool:
+    """Return true only for transient ArcAPIs failures with OpenAI configured."""
+    if not isinstance(provider, ArcAPIsProvider) or not os.environ.get("OPENAI_API_KEY"):
+        return False
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _TRANSIENT_ARCAPIS_STATUSES
+    return True
+
+
+def _arcapis_failure_reason(exc: httpx.HTTPStatusError | httpx.RequestError) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            data = exc.response.json()
+        except (ValueError, TypeError):
+            data = None
+        if isinstance(data, dict) and data.get("error"):
+            return str(data["error"])
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__

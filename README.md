@@ -423,7 +423,8 @@ Tools: `discover_services`, `list_registered_services`, `pay_and_fetch`,
 The `llm` layer is provider-agnostic with three backends, picked by environment:
 
 - **ArcAPIs** (`ARCAPIS_TOKEN_ID`) — on-chain inference via [arcapis.com](https://arcapis.com); each call is authenticated with a per-call EIP-712 signature whose signer must own the packet NFT on-chain.
-- **OpenAI** (`OPENAI_API_KEY`) — direct, off-chain.
+- **OpenAI** (`OPENAI_API_KEY`) — direct, off-chain. When both providers are
+  configured, transient ArcAPIs failures automatically fall back to OpenAI.
 - **Template** — keyless deterministic fallback; the agent runs with zero API keys.
 
 ---
