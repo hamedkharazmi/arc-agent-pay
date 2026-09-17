@@ -191,6 +191,7 @@ The core package (`PaymentClient`, `ServiceRegistry`, `BudgetGuard`) has minimal
 | `[llm]` | `openai` | Just the LLM synthesis layer (provider-agnostic) |
 | `[rag]` | `chromadb`, `fastembed` | Semantic (embedding-based) service discovery |
 | `[onchain]` | `web3` | ERC-8004 identity/reputation and ERC-8183 job contracts |
+| `[genlayer]` | `genlayer-py==0.19.0rc2` (Python 3.12+) | Assurance Intelligent Contract deployment and adjudication tooling |
 | `[observability]` | `langfuse` | Trace agent runs (Langfuse; optional, no-op without keys) |
 | `[mcp]` | `mcp` | Expose discovery + pay-and-fetch as an MCP server |
 | `[all]` | every extra above | Trying out everything at once |
@@ -213,6 +214,16 @@ arc_agent_pay/                  core SDK — minimal deps
   policy.py        PaymentPolicy — quote-aware autonomous-spending rules
   payment_store.py atomic memory / SQLite payment lifecycle journals
   interceptor.py   PaymentClient — httpx wrapper, handles 402 → sign → retry
+  assurance/       optional post-payment SLA protection
+    models.py      terms, evidence, disputes, verdicts, adjudication payloads
+    store.py       SQLite evidence, dispute, and settlement persistence
+    arc_payment.py independent Arc USDC transfer verification
+    genlayer.py    canonical payloads + finalized-verdict adapter
+    genlayer_live.py Studio-dev deployment/finality support
+    genlayer_transport.py bounded safe-read RPC retries
+    bond.py        WarrantyBond client
+    settlement.py exact cross-system binding + trusted MVP relay
+    demo_provider.py real x402 v2 Assurance demo service
   registry/        service discovery
     __init__.py    ServiceRegistry — keyword/tag search (default)
     catalog.py     external HTTP service catalog sync + TTL cache
@@ -228,7 +239,22 @@ arc_agent_pay/                  core SDK — minimal deps
     linear.py      dependency-light plan → fetch → synthesize fallback
     trust.py       ReputationGate — reputation-gated spending policy
 contracts/
-  ValidationEscrow.vy   contract-enforced release/rejection/timeout state machine
+  WarrantyBond.vy       provider-funded post-payment full refunds
+  ValidationEscrow.vy   separate validation-gated escrow workflow
+  deployments/          non-secret Arc deployment + live-demo proof artifacts
+genlayer/
+  contracts/
+    AgentPayAssurance.py   semantic SLA adjudication Intelligent Contract
+  deployments/
+    studio-dev.json       finalized GenLayer deployment metadata
+scripts/
+  deploy_warranty_bond.py
+  deploy_genlayer_assurance.py
+  run_assurance_demo_service.py
+  run_assurance_demo_payment.py
+  prepare_assurance_demo_dispute.py
+  submit_assurance_demo_adjudication.py
+  run_assurance_demo_refund.py
 ```
 
 ---
