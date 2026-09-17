@@ -4,14 +4,124 @@
 [![PyPI](https://img.shields.io/pypi/v/arc-agent-pay.svg)](https://pypi.org/project/arc-agent-pay/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Chain: Arc Testnet](https://img.shields.io/badge/chain-Arc%20Testnet%20(5042002)-7c3aed.svg)](https://explorer.testnet.arc.network)
+[![Chain: Arc Testnet](https://img.shields.io/badge/chain-Arc%20Testnet%20(5042002)-7c3aed.svg)](https://testnet.arcscan.app)
 
-Python SDK for AI agents that autonomously pay for API services using USDC nanopayments on Arc via the x402 protocol.
+AgentPay is a Python SDK for AI agents that discover paid APIs and pay for them with USDC on Arc through x402. An agent receives an HTTP 402, signs an EIP-3009 authorization, retries the request, and gets the result while the provider settles the payment on-chain.
 
-An agent discovers paid APIs, hits a real HTTP 402, signs an EIP-3009 authorization off-chain, retries — and gets the data. Every payment settles as a real on-chain `transferWithAuthorization` transaction on Arc Testnet. No wallets to manage, no approval prompts, no pre-funded accounts in the hot path.
+**Live playground:** [agentpay.bond](https://agentpay.bond/) · **SDK docs:** [agentpay.bond/docs](https://agentpay.bond/docs) · **Assurance design:** [docs/assurance.md](docs/assurance.md) · **Agent Tank review:** [HACKATHON.md](HACKATHON.md)
 
-**Live playground**: [agentpay.bond](https://agentpay.bond)
-**Docs**: [agentpay.bond/docs](https://agentpay.bond/docs)
+## AgentPay Assurance
+
+> **Chargebacks for x402 agent payments.**
+
+x402 makes payment immediate, but successful payment does not guarantee successful service delivery. AgentPay Assurance adds an optional post-payment protection path:
+
+1. A provider publishes explicit acceptance criteria and pre-funds a `WarrantyBond`.
+2. AgentPay records a bounded, sanitized snapshot of the request, response, payment, timing, and SLA.
+3. Arc independently proves the original USDC transfer and derives the buyer, provider, and amount from chain data.
+4. GenLayer judges whether the delivered service materially satisfied the frozen SLA.
+5. AgentPay binds the finalized verdict to the exact payment and evidence.
+6. A trusted MVP relay asks the provider-funded `WarrantyBond` to refund the original buyer.
+
+**The original x402 payment is never reversed.** A successful claim creates a **new USDC transfer** from the provider-funded `WarrantyBond` to the buyer.
+
+## Built for GenLayer Agent Tank
+
+**Track:** Agentic Commerce Infrastructure
+
+AgentPay existed before Agent Tank. The hackathon contribution is the Assurance layer, not the entire SDK.
+
+| Pre-existing AgentPay | Built during Agent Tank — AgentPay Assurance |
+| --- | --- |
+| Public Python SDK and `PaymentClient` | `AssuranceTerms` and service-level acceptance criteria |
+| x402/EIP-3009 payments on Arc Testnet | Optional payment-exchange observation and bounded evidence |
+| Service discovery and spending controls | Deterministic terms, evidence, payment, dispute, and binding hashes |
+| Hosted AgentPay ecosystem integration | Independent Arc USDC payment verification |
+| Earlier validation/workflow experiments | Provider-funded `WarrantyBond` with replay-safe full refunds |
+| ValidationEscrow and ERC-8183/8004-related work | GenLayer Intelligent Contract adjudication and finalized-state verification |
+|  | Exact Arc/GenLayer settlement binding and trusted MVP relay |
+|  | Live end-to-end Arc + GenLayer demonstration |
+
+## Why GenLayer?
+
+Arc/EVM contracts can deterministically verify transactions, token amounts, addresses, hashes, and replay state. They cannot reliably decide whether an arbitrary API response semantically satisfied human-readable acceptance criteria—for example, whether a market brief covered the requested assets, distinguished facts from analysis, and identified material risks.
+
+GenLayer performs that nondeterministic SLA judgment through an Intelligent Contract and validator consensus. The settlement-relevant result is a boolean; deterministic Arc logic still controls the money.
+
+> **Arc settles the money. GenLayer judges whether the service kept its promise. AgentPay binds the two.**
+
+## Assurance architecture
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer as Buyer / Agent
+    participant Provider
+    participant AgentPay
+    participant Arc as Arc Testnet
+    participant GenLayer as GenLayer AgentPayAssurance
+    participant Relay as Trusted MVP Relay
+    participant Bond as WarrantyBond on Arc
+
+    Provider->>Bond: Pre-fund provider warranty
+    Buyer->>Provider: Request paid API
+    Provider-->>Buyer: HTTP 402 + x402 quote
+    Buyer->>Provider: Paid retry + EIP-3009 authorization
+    Provider->>Arc: Settle USDC payment
+    Arc-->>Provider: Confirm original Transfer
+    Provider-->>Buyer: HTTP 200 + service response
+    AgentPay->>AgentPay: Freeze SLA + AssuranceEvidence
+    AgentPay->>Arc: Verify receipt + exact USDC Transfer
+    Buyer->>AgentPay: Open dispute
+    AgentPay->>GenLayer: Canonical bounded adjudication payload
+    GenLayer-->>AgentPay: Finalized SLA verdict
+    AgentPay->>AgentPay: Build exact AssuranceSettlementBinding
+    AgentPay->>Relay: Eligible violation verdict
+    Relay->>Bond: refund(dispute, payment, provider, buyer, amount)
+    Bond->>Buyer: New USDC transfer from provider bond
+```
+
+| System | Responsibility |
+| --- | --- |
+| **Arc** | Original x402 settlement, USDC `Transfer` proof, provider-funded bond, and refund settlement |
+| **GenLayer** | Semantic adjudication of the frozen SLA and delivery evidence |
+| **AgentPay** | Evidence capture, sanitization, canonical hashing, Arc verification, cross-system binding, and safe relay orchestration |
+
+> **Assurance is separate from ValidationEscrow.** The normal Assurance path pays the provider immediately through x402 and may later issue a new bond-funded refund. It does **not** place the original payment in ValidationEscrow. The existing validation-gated workflow remains available as a separate pre-funded escrow design.
+
+## Live end-to-end proof
+
+The committed JSON artifacts document one completed testnet run from payment through refund. The paid HTTP request succeeded, but the returned content violated the frozen SLA.
+
+| Step | Verified result |
+| --- | --- |
+| Original x402 payment | [Arc transaction `0xbd86…5617`](https://testnet.arcscan.app/tx/0xbd863ffbe75ca3e9357538790b3929acecd27fd8e6bf9f515d0a263a1f135617), 1 USDC, HTTP 200 |
+| Paid response | `DOGE will definitely outperform everything this week.` |
+| Frozen SLA | Cover BTC, ETH, and SOL; distinguish facts from analysis; include a risk/caveat; complete in ≤ 2000 ms |
+| Observed delivery | 2908 ms; semantic criteria also clearly missed |
+| GenLayer adjudication | [Studio-dev transaction `0xb6d1…81c8`](https://explorer-studio-dev.genlayer.com/transactions/0xb6d17051ec64f15d6cab6a2809b5d61fabb69ade69a8cbf3490eb9e2901b81c8), finalized `FINISHED_WITH_RETURN`, `sla_violated = true` |
+| Warranty refund | [Arc transaction `0x5315…d970`](https://testnet.arcscan.app/tx/0x53159b78f250c515ed796584d8d22ab3bd43c1dfd403638bfe3b4877c29ad970), 1 USDC |
+| Balance effect | Buyer: 19 → 20 USDC; provider bond: 5 → 4 USDC |
+| Replay check | A second settlement was refused; both dispute ID and payment hash are consumed on-chain |
+
+Review the source-of-truth artifacts:
+
+- [x402 payment](contracts/deployments/arc-testnet-assurance-demo-payment.json)
+- [frozen dispute and payload](contracts/deployments/arc-testnet-assurance-demo-dispute.json)
+- [finalized GenLayer adjudication](contracts/deployments/arc-testnet-assurance-demo-adjudication.json)
+- [confirmed Arc refund](contracts/deployments/arc-testnet-assurance-demo-refund.json)
+- [WarrantyBond deployment](contracts/deployments/arc-testnet-warranty-bond.json)
+- [provider bond funding](contracts/deployments/arc-testnet-warranty-bond-provider-funding.json)
+- [GenLayer deployment](genlayer/deployments/studio-dev.json)
+
+## Live contracts
+
+| Component | Network | Address / proof |
+| --- | --- | --- |
+| AgentPayAssurance Intelligent Contract | GenLayer Studio-dev (`61997`) | [`0x41c5…c53`](https://explorer-studio-dev.genlayer.com/contracts/0x41c5de73bda3379351a2d77648cb77389841dc53) |
+| GenLayer deployment | GenLayer Studio-dev (`61997`) | [Transaction `0x5afb…6118`](https://explorer-studio-dev.genlayer.com/transactions/0x5afb86c59276e700dc64aeb2039f55ba995252764a557b12e7b0e695090e6118) |
+| WarrantyBond | Arc Testnet (`5042002`) | `0x74c4b5006136d37134B60F4Ff952E446BC11C901` · [deployment transaction](https://testnet.arcscan.app/tx/0x6f2cd7f9cc29ee23ca90478087b600439cf49326a51f8096d8a36d7f817d405d) |
+| USDC | Arc Testnet (`5042002`) | `0x3600000000000000000000000000000000000000` |
 
 ---
 
@@ -67,7 +177,7 @@ sequenceDiagram
 
 **Chain**: Arc Testnet — chain ID `5042002`
 **USDC**: `0x3600000000000000000000000000000000000000` (native, EIP-3009 v2)
-**Explorer**: `https://explorer.testnet.arc.network`
+**Explorer**: `https://testnet.arcscan.app`
 
 ---
 
