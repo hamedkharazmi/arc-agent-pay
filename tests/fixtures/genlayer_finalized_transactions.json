@@ -1,0 +1,20 @@
+{
+  "failed": {
+    "txExecutionResult": 2,
+    "txExecutionResultName": "FINISHED_WITH_ERROR",
+    "lifecycle": {
+      "state": "finalized",
+      "outcome": "accepted"
+    },
+    "recipient": "0x3434343434343434343434343434343434343434"
+  },
+  "successful": {
+    "txExecutionResult": 1,
+    "txExecutionResultName": "FINISHED_WITH_RETURN",
+    "lifecycle": {
+      "state": "finalized",
+      "outcome": "accepted"
+    },
+    "recipient": "0x3434343434343434343434343434343434343434"
+  }
+}

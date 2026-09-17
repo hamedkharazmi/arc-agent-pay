@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum
+import re
 import time
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,59 @@ class Wallet(BaseModel):
 # Service (x402-compatible API endpoint)
 # ---------------------------------------------------------------------------
 
+_EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_ZERO_EVM_ADDRESS = "0x" + "0" * 40
+
+
+def _normalize_nonzero_evm_address(value: str) -> str:
+    """Normalize an EVM address using the workflow models' strict convention."""
+    if not isinstance(value, str) or not _EVM_ADDRESS_RE.fullmatch(value):
+        raise ValueError("must be a 20-byte 0x-prefixed EVM address")
+    normalized = value.lower()
+    if normalized == _ZERO_EVM_ADDRESS:
+        raise ValueError("zero address is not allowed")
+    return normalized
+
+
+class AssuranceTerms(BaseModel):
+    """Machine-readable warranty terms advertised with an assured service.
+
+    Phase 1 intentionally supports only a full refund and a short list of plain
+    acceptance criteria.  The model is optional on :class:`Service`, preserving
+    the existing catalog shape for services that do not offer Assurance.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: str = "1"
+    provider_address: str
+    warranty_bond_address: str
+    acceptance_criteria: list[str] = Field(min_length=1)
+    max_response_time_ms: Optional[int] = Field(default=None, gt=0)
+    dispute_window_seconds: int = Field(gt=0)
+    refund_bps: Literal[10000] = 10000
+
+    _addresses = field_validator(
+        "provider_address", "warranty_bond_address", mode="before"
+    )(_normalize_nonzero_evm_address)
+
+    @field_validator("version")
+    @classmethod
+    def version_must_not_be_empty(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("version must not be empty")
+        return normalized
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def criteria_must_not_be_empty(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("acceptance criteria must not contain empty entries")
+        return normalized
+
+
 class Service(BaseModel):
     """A paid API endpoint discovered via the registry."""
     name: str
@@ -78,6 +132,8 @@ class Service(BaseModel):
     # The provider's ERC-8004 agent id, if it advertises an on-chain identity.
     # When set, a trust policy can gate payment on the provider's reputation.
     provider_agent_id: Optional[int] = None
+    # Optional post-payment warranty terms. Existing service JSON remains valid.
+    assurance: Optional[AssuranceTerms] = None
 
     @property
     def price_decimal(self) -> Decimal:

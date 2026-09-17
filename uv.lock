@@ -208,6 +208,7 @@ agent = [
 all = [
     { name = "chromadb" },
     { name = "fastembed" },
+    { name = "genlayer-py", marker = "python_full_version >= '3.12'" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langfuse" },
@@ -215,6 +216,9 @@ all = [
     { name = "mcp" },
     { name = "openai" },
     { name = "web3" },
+]
+genlayer = [
+    { name = "genlayer-py", marker = "python_full_version >= '3.12'" },
 ]
 llm = [
     { name = "openai" },
@@ -236,6 +240,7 @@ rag = [
 [package.dev-dependencies]
 dev = [
     { name = "eth-tester", extra = ["py-evm"] },
+    { name = "genvm-linter" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "respx" },
@@ -251,6 +256,8 @@ requires-dist = [
     { name = "eth-account", specifier = ">=0.13" },
     { name = "fastembed", marker = "extra == 'all'", specifier = ">=0.3" },
     { name = "fastembed", marker = "extra == 'rag'", specifier = ">=0.3" },
+    { name = "genlayer-py", marker = "python_full_version >= '3.12' and extra == 'all'", specifier = "==0.19.0rc2" },
+    { name = "genlayer-py", marker = "python_full_version >= '3.12' and extra == 'genlayer'", specifier = "==0.19.0rc2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", marker = "extra == 'agent'", specifier = ">=0.3" },
     { name = "langchain-core", marker = "extra == 'all'", specifier = ">=0.3" },
@@ -270,11 +277,12 @@ requires-dist = [
     { name = "web3", marker = "extra == 'onchain'", specifier = ">=7.0" },
     { name = "x402", extras = ["evm", "httpx"], specifier = ">=2.15" },
 ]
-provides-extras = ["llm", "rag", "onchain", "observability", "mcp", "agent", "all"]
+provides-extras = ["llm", "rag", "onchain", "genlayer", "observability", "mcp", "agent", "all"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "eth-tester", extras = ["py-evm"], specifier = ">=0.13.0b1" },
+    { name = "genvm-linter", specifier = "==0.11.0" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "respx", specifier = ">=0.21" },
@@ -1335,6 +1343,33 @@ wheels = [
 ]
 
 [[package]]
+name = "genlayer-py"
+version = "0.19.0rc2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "web3", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/af/17/1a82ff1db9d6b33ca8a73c8edb9c1786860462ee1fa16eb5261e50b1b7ac/genlayer_py-0.19.0rc2.tar.gz", hash = "sha256:92056aa1b9eb336550a86c7cc3dbd9c7b10afd18d9d846d094e4bc7dd8d7224a", size = 90588, upload-time = "2026-09-03T14:22:46.187Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/cb/b9df445c0aa09d0307561579b306e5a1133e736f1619b8bb1687ed8e8f50/genlayer_py-0.19.0rc2-py3-none-any.whl", hash = "sha256:40f96bb2b0ded2174a98533d199cbdfc57235255a5b8ed84a0b9464851cb708c", size = 106602, upload-time = "2026-09-03T14:22:45.109Z" },
+]
+
+[[package]]
+name = "genvm-linter"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pyright" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/50/e72b51176c229b528c8dba26caa3343f54fbe552cac6fea173c4ef8eefb5/genvm_linter-0.11.0.tar.gz", hash = "sha256:c287ae64ba58dfe2a62b538c17a31c5b89d4dcf50718a8a4d35137dc0ebc4ad3", size = 78130, upload-time = "2026-06-04T16:01:07.442Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/a7/c9bc251e4b07954a31ac1365063e2c6b0d24ca28e7fcdec20cec328341bd/genvm_linter-0.11.0-py3-none-any.whl", hash = "sha256:58af368831d670e5a0b717400252fdfae88ff71fd65f9fb5fdd3ced326b6d90e", size = 40888, upload-time = "2026-06-04T16:01:06.406Z" },
+]
+
+[[package]]
 name = "googleapis-common-protos"
 version = "1.75.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2276,6 +2311,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/83/f8/51569ac65d696c8ecbee95938f89d4abf00f47d58d48f6fbabfe8f0baefe/nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe", size = 7418, upload-time = "2024-01-21T14:25:19.227Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/c4/c2971a3ba4c6103a3d10c4b0f24f461ddc027f0f09763220cf35ca1401b3/nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c", size = 5195, upload-time = "2024-01-21T14:25:17.223Z" },
+]
+
+[[package]]
+name = "nodeenv"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
 ]
 
 [[package]]
@@ -3398,6 +3442,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e7/82/28175b2414effca1cdac8dc99f76d660e7a4fb0ceefa4b4ab8f5f6742925/pyproject_hooks-1.2.0.tar.gz", hash = "sha256:1e859bd5c40fae9448642dd871adf459e5e2084186e8d2c2a79a824c970da1f8", size = 19228, upload-time = "2024-09-29T09:24:13.293Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/24/12818598c362d7f300f18e74db45963dbcb85150324092410c8b49405e42/pyproject_hooks-1.2.0-py3-none-any.whl", hash = "sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913", size = 10216, upload-time = "2024-09-29T09:24:11.978Z" },
+]
+
+[[package]]
+name = "pyright"
+version = "1.1.414"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nodeenv" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/1b/244c7b710031ada80f27e579ec20d28a2285dfc318fed0339866b1047f12/pyright-1.1.414.tar.gz", hash = "sha256:523c0a97c60da6333234955c277730c9cf4f5bd6d5399e7b7d2b0fc5d3599524", size = 4154638, upload-time = "2026-09-10T12:26:53.181Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/ba/18b6e682ead424ad24bcc134339ae5d1b931cd9ae260540592a058a91279/pyright-1.1.414-py3-none-any.whl", hash = "sha256:2a6b4b3298c9eec174c5ed83bd338de6eee82df2992f3e1930e6199d381be36f", size = 6225049, upload-time = "2026-09-10T12:26:51.427Z" },
 ]
 
 [[package]]

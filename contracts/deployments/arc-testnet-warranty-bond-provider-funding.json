@@ -1,0 +1,29 @@
+{
+  "amount_atomic": 5000000,
+  "approve_block_number": 62460637,
+  "approve_gas_used": 55426,
+  "approve_transaction_hash": "0x0dced6680ef7eab2f9991be8f2e43db83d3335c5c89b00921dc818ceb6db7f0e",
+  "bond_deposited_event": {
+    "amount_atomic": 5000000,
+    "provider": "0x5cBC83e3363710772B8812Ad3AB5423116011651"
+  },
+  "chain_id": 5042002,
+  "confirmed_at": "2026-09-16T20:37:18Z",
+  "deposit_block_number": 62460641,
+  "deposit_gas_used": 74395,
+  "deposit_transaction_hash": "0x714ec19c4059468e3c793fcc4a7b5a02ad9b972148c9face46797db0adb93a2e",
+  "final_allowance": 0,
+  "final_provider_usdc_balance": 14996754,
+  "final_warranty_bond_usdc_balance": 5000000,
+  "initial_provider_bond_balance": 0,
+  "initial_provider_usdc_balance": 20000000,
+  "initial_warranty_bond_usdc_balance": 0,
+  "provider": "0x5cBC83e3363710772B8812Ad3AB5423116011651",
+  "resulting_provider_bond_balance": 5000000,
+  "schema_version": "1",
+  "status": "confirmed",
+  "total_gas_cost_native_atomic": 3245525000000000,
+  "usdc": "0x3600000000000000000000000000000000000000",
+  "visible_gas_cost_usdc_atomic": 3246,
+  "warranty_bond": "0x74c4b5006136d37134B60F4Ff952E446BC11C901"
+}

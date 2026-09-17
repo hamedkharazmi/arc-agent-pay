@@ -1,0 +1,73 @@
+{
+  "amount_atomic": 1000000,
+  "arc_block_number": 62517041,
+  "arc_transaction_hash": "0xbd863ffbe75ca3e9357538790b3929acecd27fd8e6bf9f515d0a263a1f135617",
+  "bad_response": {
+    "brief": "DOGE will definitely outperform everything this week."
+  },
+  "buyer": "0x3Ea7d677Ee657c0903Fd0bF54c8316330848eE88",
+  "chain_id": 5042002,
+  "confirmations_at_verification": 494,
+  "endpoint": "http://127.0.0.1:8402/assurance-demo",
+  "evidence_hash": "0xeeda66cc3adb4e4dc22cfb172aae7feeb39d743f6506159786f54c8ce3491a7f",
+  "evidence_id": "0xeeda66cc3adb4e4dc22cfb172aae7feeb39d743f6506159786f54c8ce3491a7f",
+  "evidence_store": "contracts/deployments/arc-testnet-assurance-demo-evidence.db",
+  "final_buyer_usdc": 19000000,
+  "final_provider_bond": 5000000,
+  "final_provider_usdc": 15994575,
+  "final_warranty_bond_usdc": 5000000,
+  "http_status": 200,
+  "initial_buyer_usdc": 20000000,
+  "initial_provider_bond": 5000000,
+  "initial_provider_usdc": 14996754,
+  "initial_warranty_bond_usdc": 5000000,
+  "payment_id": "assurance_cf161b91748a4d4f8b10308b35a9e174",
+  "payment_id_hash": "0x909d5162f2c77c92e27ae79b1e0c1fdf73b1475972973a9416fb4c61fe914268",
+  "payment_journal": "contracts/deployments/arc-testnet-assurance-demo-payment-journal.db",
+  "payment_requirements": {
+    "accepts": [
+      {
+        "amount": "1000000",
+        "asset": "0x3600000000000000000000000000000000000000",
+        "extra": {
+          "name": "USDC",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "eip155:5042002",
+        "payTo": "0x5cBC83e3363710772B8812Ad3AB5423116011651",
+        "scheme": "exact"
+      }
+    ],
+    "error": "Payment required",
+    "resource": {
+      "description": "AgentPay Assurance intentionally bad market brief",
+      "mimeType": "application/json",
+      "serviceName": "AI Market Brief Assurance Demo",
+      "url": "http://127.0.0.1:8402/assurance-demo"
+    },
+    "x402Version": 2
+  },
+  "payment_response": {
+    "amount": "1000000",
+    "extra": {
+      "asset": "0x3600000000000000000000000000000000000000",
+      "payTo": "0x5cBC83e3363710772B8812Ad3AB5423116011651"
+    },
+    "network": "eip155:5042002",
+    "payer": "0x3Ea7d677Ee657c0903Fd0bF54c8316330848eE88",
+    "success": true,
+    "transaction": "0xbd863ffbe75ca3e9357538790b3929acecd27fd8e6bf9f515d0a263a1f135617"
+  },
+  "preflight_block_number": 62517034,
+  "provider": "0x5cBC83e3363710772B8812Ad3AB5423116011651",
+  "provider_settlement_gas_native_atomic": 2179425000000000,
+  "provider_settlement_gas_usdc_atomic": 2179,
+  "schema_version": "1",
+  "status": "verified",
+  "terms_hash": "0x3bb78690528858d113197ab92b916646f528cdad602bda87edd03516342dd389",
+  "verified_amount_atomic": 1000000,
+  "verified_at": "2026-09-17T04:29:02Z",
+  "verified_buyer": "0x3Ea7d677Ee657c0903Fd0bF54c8316330848eE88",
+  "verified_provider": "0x5cBC83e3363710772B8812Ad3AB5423116011651"
+}

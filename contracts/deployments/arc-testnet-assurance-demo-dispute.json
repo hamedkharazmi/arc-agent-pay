@@ -1,0 +1,39 @@
+{
+  "adjudication_input_hash": "0x00e255414263a5336dc2eba78f7ed71f3109a25a5839d5e8e68c5f6ee270067e",
+  "adjudication_payload_canonical": "{\"buyer_allegation\":\"The paid response violated the agreed SLA because it did not cover BTC, ETH, or SOL, did not distinguish facts from analysis, and did not include a risk or caveat.\",\"dispute_id\":\"0x7ab7aba2fb6fd39b26e4c492b332a9f179ff609e31e6096bbb92098aabd52844\",\"evidence_hash\":\"0xeeda66cc3adb4e4dc22cfb172aae7feeb39d743f6506159786f54c8ce3491a7f\",\"paid_response_status\":200,\"payment_id_hash\":\"0x909d5162f2c77c92e27ae79b1e0c1fdf73b1475972973a9416fb4c61fe914268\",\"request_body\":{\"content\":null,\"content_included\":false,\"original_size\":0,\"representation\":\"sha256\",\"sha256\":\"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},\"request_method\":\"GET\",\"request_url\":\"http://127.0.0.1:8402/assurance-demo\",\"response_body\":{\"content\":\"{\\\"brief\\\":\\\"DOGE will definitely outperform everything this week.\\\"}\",\"content_included\":true,\"original_size\":65,\"representation\":\"canonical-json\",\"sha256\":\"0x82dd8ccc215ad553c63c60898c95591e7f626ec8605ee7b678be159cb3053fe4\"},\"schema_version\":\"1\",\"service_description\":\"Produces a concise BTC, ETH, and SOL market brief from supplied information.\",\"sla\":{\"acceptance_criteria\":[\"Cover BTC, ETH, and SOL.\",\"Clearly distinguish factual information from analysis.\",\"Include at least one material risk or caveat.\"],\"max_response_time_ms\":2000,\"version\":\"1\"},\"terms_hash\":\"0x3bb78690528858d113197ab92b916646f528cdad602bda87edd03516342dd389\",\"timing\":{\"delivery_elapsed_ms\":2908,\"paid_response_received_at_ms\":1789619342827,\"payment_authorized_at_ms\":1789619339919}}",
+  "adjudication_payload_size_bytes": 1511,
+  "amount_atomic": 1000000,
+  "arc_chain_id": 5042002,
+  "arc_confirmations_at_preparation": 1442,
+  "arc_payment_block": 62517041,
+  "arc_payment_transaction": "0xbd863ffbe75ca3e9357538790b3929acecd27fd8e6bf9f515d0a263a1f135617",
+  "asset": "0x3600000000000000000000000000000000000000",
+  "buyer": "0x3Ea7d677Ee657c0903Fd0bF54c8316330848eE88",
+  "dispute_allegation": "The paid response violated the agreed SLA because it did not cover BTC, ETH, or SOL, did not distinguish facts from analysis, and did not include a risk or caveat.",
+  "dispute_id": "0x7ab7aba2fb6fd39b26e4c492b332a9f179ff609e31e6096bbb92098aabd52844",
+  "dispute_status": "open",
+  "evidence_hash": "0xeeda66cc3adb4e4dc22cfb172aae7feeb39d743f6506159786f54c8ce3491a7f",
+  "evidence_store": "contracts/deployments/arc-testnet-assurance-demo-evidence.db",
+  "genlayer": {
+    "chain_id": 61997,
+    "contract_address": "0x41C5DE73Bda3379351a2d77648Cb77389841Dc53",
+    "estimated_fee_atomic_gen": 100000000000010352,
+    "existing_verdict": false,
+    "network": "studio-dev",
+    "operator_address": "0xAD9B0B4EDa94329c72837263979b0fD3Be4BCD18",
+    "operator_balance_atomic_gen": 9999447368249994298,
+    "state_read": "LATEST_FINAL"
+  },
+  "payment_id": "assurance_cf161b91748a4d4f8b10308b35a9e174",
+  "payment_id_hash": "0x909d5162f2c77c92e27ae79b1e0c1fdf73b1475972973a9416fb4c61fe914268",
+  "phase": "5D",
+  "prepared_at": "2026-09-17T04:41:11.303504Z",
+  "provider": "0x5cBC83e3363710772B8812Ad3AB5423116011651",
+  "schema_version": "1",
+  "semantic_demo_expectation": {
+    "note": "Local demo expectation only; not submitted as judging instructions.",
+    "sla_violated": true,
+    "trusted_adjudication_input": false
+  },
+  "terms_hash": "0x3bb78690528858d113197ab92b916646f528cdad602bda87edd03516342dd389"
+}

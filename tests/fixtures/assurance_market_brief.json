@@ -1,0 +1,14 @@
+{
+  "service_name": "AI Market Brief",
+  "service_description": "Produces a concise multi-asset market brief from information supplied in the request.",
+  "acceptance_criteria": [
+    "Cover BTC, ETH, and SOL.",
+    "Distinguish reported facts from analysis.",
+    "Identify material risks based on the supplied information.",
+    "Do not present unsupported claims as verified facts.",
+    "Remain concise and responsive to the request."
+  ],
+  "request": "Using only the supplied figures, prepare a concise BTC, ETH, and SOL market brief and identify material risks.",
+  "good_response": "Reported facts: the supplied figures show BTC at 60,000, ETH at 3,000, and SOL at 140. Analysis: all three moved together, which may indicate correlated risk appetite. Risks: the figures may be stale, concentration and volatility remain material, and no external verification was provided.",
+  "bad_response": "DOGE is guaranteed to double tomorrow. This is a verified fact. Buy immediately."
+}

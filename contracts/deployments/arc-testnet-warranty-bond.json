@@ -1,0 +1,17 @@
+{
+  "block_number": 62457876,
+  "chain_id": 5042002,
+  "compiled_runtime_bytecode_sha256": "c679322c3b4133f46557adecfcb3e8db76324b45e43200d55a317a17304a8dc6",
+  "contract_address": "0x74c4b5006136d37134B60F4Ff952E446BC11C901",
+  "creation_bytecode_sha256": "0c94e0aee7c716808a219fe0bb9f470a762ed807b3cfa78def7d9a48bcbc9cee",
+  "deployed_at": "2026-09-16T20:14:12Z",
+  "deployed_runtime_code_keccak": "5cb9b4fd9c7907e6d30891ab45704d1b315aa600536e2d3dec3b9d26f5ffc837",
+  "deployer": "0xAD9B0B4EDa94329c72837263979b0fD3Be4BCD18",
+  "deployment_transaction_hash": "0x6f2cd7f9cc29ee23ca90478087b600439cf49326a51f8096d8a36d7f817d405d",
+  "gas_used": 566671,
+  "resolver": "0xAD9B0B4EDa94329c72837263979b0fD3Be4BCD18",
+  "schema_version": "1",
+  "source_sha256": "126c7a3a6f5c3b028514b0d5041e60f376f70eff9b24451524073c7939b57d52",
+  "usdc": "0x3600000000000000000000000000000000000000",
+  "vyper_version": "0.4.3"
+}

@@ -1,0 +1,87 @@
+[
+  {
+    "name": "BondDeposited",
+    "inputs": [
+      {"name": "provider", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ],
+    "anonymous": false,
+    "type": "event"
+  },
+  {
+    "name": "WarrantyRefunded",
+    "inputs": [
+      {"name": "dispute_id", "type": "bytes32", "indexed": true},
+      {"name": "payment_id_hash", "type": "bytes32", "indexed": true},
+      {"name": "provider", "type": "address", "indexed": true},
+      {"name": "buyer", "type": "address", "indexed": false},
+      {"name": "payment_amount", "type": "uint256", "indexed": false}
+    ],
+    "anonymous": false,
+    "type": "event"
+  },
+  {
+    "stateMutability": "view",
+    "type": "function",
+    "name": "usdc",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address"}]
+  },
+  {
+    "stateMutability": "view",
+    "type": "function",
+    "name": "resolver",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "address"}]
+  },
+  {
+    "stateMutability": "view",
+    "type": "function",
+    "name": "bond_balance",
+    "inputs": [{"name": "provider", "type": "address"}],
+    "outputs": [{"name": "", "type": "uint256"}]
+  },
+  {
+    "stateMutability": "nonpayable",
+    "type": "function",
+    "name": "deposit",
+    "inputs": [{"name": "amount", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "stateMutability": "nonpayable",
+    "type": "function",
+    "name": "refund",
+    "inputs": [
+      {"name": "dispute_id", "type": "bytes32"},
+      {"name": "payment_id_hash", "type": "bytes32"},
+      {"name": "provider", "type": "address"},
+      {"name": "buyer", "type": "address"},
+      {"name": "payment_amount", "type": "uint256"}
+    ],
+    "outputs": []
+  },
+  {
+    "stateMutability": "view",
+    "type": "function",
+    "name": "processed_disputes",
+    "inputs": [{"name": "arg0", "type": "bytes32"}],
+    "outputs": [{"name": "", "type": "bool"}]
+  },
+  {
+    "stateMutability": "view",
+    "type": "function",
+    "name": "refunded_payments",
+    "inputs": [{"name": "arg0", "type": "bytes32"}],
+    "outputs": [{"name": "", "type": "bool"}]
+  },
+  {
+    "stateMutability": "nonpayable",
+    "type": "constructor",
+    "inputs": [
+      {"name": "_usdc", "type": "address"},
+      {"name": "_resolver", "type": "address"}
+    ],
+    "outputs": []
+  }
+]

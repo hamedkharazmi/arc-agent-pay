@@ -6,7 +6,7 @@ Arc docs) and their minimal ABIs. Addresses can be overridden per-deployment via
 environment variables so the SDK keeps working if Arc redeploys:
 
     ERC8004_IDENTITY_REGISTRY, ERC8004_REPUTATION_REGISTRY,
-    ERC8004_VALIDATION_REGISTRY, ARC_TESTNET_RPC
+    ERC8004_VALIDATION_REGISTRY, WARRANTY_BOND_ADDRESS, ARC_TESTNET_RPC
 """
 
 from __future__ import annotations
@@ -37,6 +37,15 @@ def rpc_url() -> str:
 
 def chain_id() -> int:
     return _addresses()["chain_id"]
+
+
+def usdc_address() -> str:
+    return os.environ.get("ARC_TESTNET_USDC") or _addresses()["usdc"]
+
+
+def warranty_bond_address() -> str | None:
+    """Return the configured bond address, or ``None`` before deployment."""
+    return os.environ.get("WARRANTY_BOND_ADDRESS") or _addresses()["warranty_bond"]
 
 
 def identity_registry_address() -> str:

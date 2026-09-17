@@ -38,11 +38,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+from dataclasses import dataclass
+import hashlib
 import json
 import logging
 import inspect
+import time
 from decimal import Decimal
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Protocol
 
 from ._payment_identifier import (
     PAYMENT_IDENTIFIER,
@@ -68,6 +71,131 @@ from .payment_store import (
 from .policy import PaymentPolicy
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Optional, payment-provider-neutral exchange observation
+# ---------------------------------------------------------------------------
+
+_REQUEST_HEADER_ALLOWLIST = frozenset(
+    {"accept", "content-type", "traceparent", "tracestate", "user-agent", "x-request-id"}
+)
+_RESPONSE_HEADER_ALLOWLIST = frozenset(
+    {
+        "cache-control",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "last-modified",
+        "traceparent",
+        "x-request-id",
+    }
+)
+_SECRET_HEADERS = frozenset(
+    {
+        "api-key",
+        "authorization",
+        "cookie",
+        "payment-signature",
+        "proxy-authorization",
+        "set-cookie",
+        "x-api-key",
+        "x-payment",
+    }
+)
+
+
+@dataclass(frozen=True)
+class PaymentExchange:
+    """Sanitized snapshot of one 402 -> authorization -> paid response exchange.
+
+    The signed payment payload is deliberately represented only by its SHA-256
+    hash. Request and response headers are allowlisted before this object is
+    handed to user code. Bodies remain bytes so an opt-in recorder can apply its
+    own bounded, content-aware representation.
+    """
+
+    payment_id: str
+    service_url: str
+    amount_usdc: str
+    amount_atomic: Optional[str]
+    chain: str
+    network: Optional[str]
+    asset: Optional[str]
+    pay_to: Optional[str]
+    scheme: str
+    payment_status: str
+    request_method: str
+    request_url: str
+    request_body: bytes
+    request_headers: dict[str, str]
+    parsed_payment_required: dict[str, Any]
+    selected_requirement: dict[str, Any]
+    original_payment_required: Optional[str]
+    payment_payload_hash: str
+    request_started_at: float
+    payment_required_at: float
+    payment_authorized_at: float
+    paid_response_received_at: float
+    paid_response_status: Optional[int]
+    paid_response_body: bytes
+    paid_response_headers: dict[str, str]
+    raw_payment_response: Optional[str]
+    settlement_response: dict[str, Any]
+    transaction_reference: Optional[str]
+    transport_error: Optional[str] = None
+
+
+class PaymentExchangeObserver(Protocol):
+    """Observer interface used by optional evidence recorders.
+
+    Implementations may be synchronous or return an awaitable. PaymentClient is
+    fail-open: observer errors are logged and never change payment state or cause
+    the paid request to be sent again.
+    """
+
+    def on_exchange(self, exchange: PaymentExchange) -> Optional[Awaitable[None]]: ...
+
+
+def _sanitized_headers(headers: Any, allowlist: frozenset[str]) -> dict[str, str]:
+    """Return a deterministic allowlisted view, with secret names always denied."""
+    captured: dict[str, str] = {}
+    try:
+        items = headers.items()
+    except Exception:
+        return captured
+    for raw_name, raw_value in items:
+        name = str(raw_name).lower()
+        if name in allowlist and name not in _SECRET_HEADERS:
+            captured[name] = str(raw_value)
+    return dict(sorted(captured.items()))
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert SDK schema objects to deterministic JSON-compatible values."""
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump(mode="json", by_alias=True)
+        except TypeError:
+            value = value.model_dump()
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in sorted(value.items(), key=lambda x: str(x[0]))}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, bytes):
+        return {"encoding": "base64", "value": base64.b64encode(value).decode("ascii")}
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "value"):
+        return _json_safe(value.value)
+    return str(value)
+
+
+def _payload_hash(payment_payload: Any) -> str:
+    """Hash the x402 payload object without exposing its signed value."""
+    canonical = json.dumps(_json_safe(payment_payload), sort_keys=True, separators=(",", ":"))
+    return "0x" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +280,9 @@ class _BudgetEnforcingTransport:
 
     async def handle_async_request(self, request: Any) -> Any:
         is_retry = bool(request.extensions.get(self._RETRY_KEY))
+        observation_started_at = (
+            time.time() if self._payment_client._exchange_observer is not None else 0.0
+        )
 
         # --- idempotency: replay a cached paid response if enabled ---
         signature = self._signature(request)
@@ -187,6 +318,9 @@ class _BudgetEnforcingTransport:
             payment_required = self._http_helper.get_payment_required_response(_get_header, body)
         except Exception as exc:
             raise PaymentFailedError(f"Failed to parse x402 payment requirements: {exc}") from exc
+        payment_required_at = (
+            time.time() if self._payment_client._exchange_observer is not None else 0.0
+        )
 
         requested_id = request.extensions.get(self._PAYMENT_ID_KEY)
         payment_id = self._payment_client._resolve_payment_id(requested_id)
@@ -291,6 +425,17 @@ class _BudgetEnforcingTransport:
             })
             raise PaymentFailedError(f"Failed to build x402 payment: {e}") from e
 
+        payment_authorized_at = (
+            time.time() if self._payment_client._exchange_observer is not None else 0.0
+        )
+        payment_payload_hash = ""
+        if self._payment_client._exchange_observer is not None:
+            try:
+                payment_payload_hash = _payload_hash(payment_payload)
+            except Exception:
+                # The encoded header is a deterministic fallback for unusual SDK payload types.
+                payment_payload_hash = _payload_hash(payment_headers)
+
         if payment.status == PaymentStatus.PENDING:
             payment.status = PaymentStatus.AUTHORIZED
             self._payment_client._save_payment(payment)
@@ -318,6 +463,20 @@ class _BudgetEnforcingTransport:
                 "amount_usdc": amount_usdc,
                 "error": str(exc),
             })
+            if self._payment_client._exchange_observer is not None:
+                await self._notify_exchange_observer(
+                    request=request,
+                    initial_response=response,
+                    payment_required=payment_required,
+                    payment_payload_hash=payment_payload_hash,
+                    payment=payment,
+                    request_started_at=observation_started_at,
+                    payment_required_at=payment_required_at,
+                    payment_authorized_at=payment_authorized_at,
+                    paid_response_received_at=time.time(),
+                    paid_response=None,
+                    transport_error=str(exc),
+                )
             raise PaymentTimeoutError(
                 f"Payment {payment.payment_id} may have settled; reuse this payment ID to retry safely",
                 payment_id=payment.payment_id,
@@ -388,11 +547,137 @@ class _BudgetEnforcingTransport:
                 })
             self._payment_client._save_payment(payment)
 
+        if self._payment_client._exchange_observer is not None:
+            await self._notify_exchange_observer(
+                request=request,
+                initial_response=response,
+                payment_required=payment_required,
+                payment_payload_hash=payment_payload_hash,
+                payment=payment,
+                request_started_at=observation_started_at,
+                payment_required_at=payment_required_at,
+                payment_authorized_at=payment_authorized_at,
+                paid_response_received_at=time.time(),
+                paid_response=retry_response,
+            )
         return retry_response
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _notify_exchange_observer(
+        self,
+        *,
+        request: Any,
+        initial_response: Any,
+        payment_required: Any,
+        payment_payload_hash: str,
+        payment: Payment,
+        request_started_at: float,
+        payment_required_at: float,
+        payment_authorized_at: float,
+        paid_response_received_at: float,
+        paid_response: Any = None,
+        transport_error: Optional[str] = None,
+    ) -> None:
+        """Build and publish one safe snapshot; all capture failures are fail-open."""
+        if self._payment_client._exchange_observer is None:
+            return
+        try:
+            paid_body = b""
+            paid_headers: dict[str, str] = {}
+            paid_status = None
+            raw_payment_response = None
+            settlement: dict[str, Any] = {}
+            if paid_response is not None:
+                try:
+                    await paid_response.aread()
+                    paid_body = bytes(paid_response.content)
+                except Exception as exc:  # preserve the HTTP/payment result
+                    logger.warning("could not read paid response for observer: %s", exc)
+                paid_status = int(paid_response.status_code)
+                paid_headers = _sanitized_headers(
+                    paid_response.headers, _RESPONSE_HEADER_ALLOWLIST
+                )
+                raw_payment_response = (
+                    paid_response.headers.get("PAYMENT-RESPONSE")
+                    or paid_response.headers.get("X-PAYMENT-RESPONSE")
+                    or None
+                )
+                settlement = PaymentClient.extract_payment_response(paid_response.headers)
+
+            accepts = self._payment_client._requirement_value(
+                payment_required, "accepts"
+            ) or []
+            raw_version = self._payment_client._requirement_value(
+                payment_required, "x402_version", "x402Version"
+            )
+            try:
+                version = int(raw_version) if raw_version is not None else 2
+                selected = (
+                    self._payment_client._select_x402_requirement(version, list(accepts))
+                    if accepts
+                    else {}
+                )
+            except Exception:
+                selected = {}
+
+            parsed_required = _json_safe(payment_required)
+            parsed_selected = _json_safe(selected)
+            if not isinstance(parsed_required, dict):
+                parsed_required = {"value": parsed_required}
+            if not isinstance(parsed_selected, dict):
+                parsed_selected = {"value": parsed_selected}
+
+            original_required = (
+                initial_response.headers.get("PAYMENT-REQUIRED")
+                or initial_response.headers.get("X-PAYMENT-REQUIRED")
+                or None
+            )
+            if original_required is None:
+                raw_body = bytes(initial_response.content)
+                try:
+                    original_required = raw_body.decode("utf-8")
+                except UnicodeDecodeError:
+                    original_required = "base64:" + base64.b64encode(raw_body).decode("ascii")
+
+            exchange = PaymentExchange(
+                payment_id=payment.payment_id or "",
+                service_url=payment.service_url,
+                amount_usdc=payment.amount_usdc,
+                amount_atomic=payment.amount_atomic,
+                chain=payment.chain.value,
+                network=payment.network,
+                asset=payment.asset,
+                pay_to=payment.pay_to,
+                scheme=payment.scheme,
+                payment_status=payment.status.value,
+                request_method=request.method,
+                request_url=str(request.url),
+                request_body=bytes(request.content or b""),
+                request_headers=_sanitized_headers(
+                    request.headers, _REQUEST_HEADER_ALLOWLIST
+                ),
+                parsed_payment_required=parsed_required,
+                selected_requirement=parsed_selected,
+                original_payment_required=original_required,
+                payment_payload_hash=payment_payload_hash,
+                request_started_at=request_started_at,
+                payment_required_at=payment_required_at,
+                payment_authorized_at=payment_authorized_at,
+                paid_response_received_at=paid_response_received_at,
+                paid_response_status=paid_status,
+                paid_response_body=paid_body,
+                paid_response_headers=paid_headers,
+                raw_payment_response=raw_payment_response,
+                settlement_response=_json_safe(settlement),
+                transaction_reference=payment.tx_reference,
+                transport_error=(transport_error or "")[:500] or None,
+            )
+            await self._payment_client._observe_exchange(exchange)
+        except Exception as exc:  # noqa: BLE001 - evidence capture must be fail-open
+            logger.warning("could not build payment exchange observation: %s", exc)
 
     @staticmethod
     async def _extract_failure_reason(response: Any) -> str:
@@ -512,6 +797,10 @@ class PaymentClient:
                          durable SQLite store when one is not supplied.
         asset_decimals:  Decimals used to present the selected atomic amount as
                          ``amount_usdc``. Arc USDC defaults to 6.
+        exchange_observer: Optional callable or ``PaymentExchangeObserver``.
+                         It receives one sanitized snapshot after a paid request
+                         resolves (or becomes ambiguous). It is fail-open: its
+                         failures never change payment semantics.
     """
 
     def __init__(
@@ -529,6 +818,7 @@ class PaymentClient:
         policy: Optional[PaymentPolicy] = None,
         payment_store: Any = None,
         asset_decimals: int = 6,
+        exchange_observer: Optional[Any] = None,
     ) -> None:
         if account is None and signer is None:
             raise ValueError("PaymentClient requires either account or signer.")
@@ -559,6 +849,7 @@ class PaymentClient:
         self._payments: list[Payment] = []
         self._client: Any = None   # httpx.AsyncClient, set in __aenter__
         self.__on_event = on_event
+        self._exchange_observer = exchange_observer
         # Transient-retry config (connection errors + 5xx on the pre-payment GET).
         # The paid retry is never auto-retried, to avoid double settlement.
         self._max_retries = max(0, int(max_retries))
@@ -575,6 +866,19 @@ class PaymentClient:
                 self.__on_event(event_type, payload)
             except Exception:
                 pass
+
+    async def _observe_exchange(self, exchange: PaymentExchange) -> None:
+        """Invoke the opt-in observer without allowing it to affect payment flow."""
+        observer = self._exchange_observer
+        if observer is None:
+            return
+        callback = getattr(observer, "on_exchange", observer)
+        try:
+            result = callback(exchange)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:  # noqa: BLE001 - observer is deliberately fail-open
+            logger.warning("payment exchange observer failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Idempotency cache (opt-in via idempotency_ttl)
